@@ -10,6 +10,7 @@ import pytest
 
 from backend.models.price_event import PriceEvent
 from backend.adapters.alpaca import AlpacaAdapter
+from backend.adapters.coinbase import CoinbaseAdapter
 
 
 class TestPriceEvent:
@@ -104,6 +105,81 @@ class TestAlpacaAdapter:
         })
         assert event is not None
         assert event.timestamp.tzinfo is not None  # should have timezone
+
+
+class TestCoinbaseAdapter:
+    def _make_adapter(self):
+        return CoinbaseAdapter()
+
+    def test_parse_ticker_caches_quote(self):
+        adapter = self._make_adapter()
+        events = adapter._parse({
+            "channel": "ticker",
+            "events": [
+                {
+                    "type": "snapshot",
+                    "tickers": [
+                        {
+                            "product_id": "BTC-USD",
+                            "price": "65000.00",
+                            "best_bid": "64999.50",
+                            "best_ask": "65000.50",
+                        }
+                    ],
+                }
+            ],
+        })
+        assert events == []
+        assert adapter._quotes["BTC-USD"]["bid"] == pytest.approx(64999.50, abs=1e-6)
+        assert adapter._quotes["BTC-USD"]["ask"] == pytest.approx(65000.50, abs=1e-6)
+
+    def test_parse_market_trade_uses_cached_quote(self):
+        adapter = self._make_adapter()
+        adapter._parse({
+            "channel": "ticker",
+            "events": [
+                {
+                    "tickers": [
+                        {
+                            "product_id": "ETH-USD",
+                            "best_bid": "3499.90",
+                            "best_ask": "3500.10",
+                        }
+                    ]
+                }
+            ],
+        })
+
+        events = adapter._parse({
+            "channel": "market_trades",
+            "events": [
+                {
+                    "type": "update",
+                    "trades": [
+                        {
+                            "product_id": "ETH-USD",
+                            "price": "3500.00",
+                            "size": "0.25",
+                            "time": "2026-03-27T14:30:00.250Z",
+                        }
+                    ],
+                }
+            ],
+        })
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.symbol == "ETH-USD"
+        assert event.price == pytest.approx(3500.00, abs=1e-6)
+        assert event.volume == pytest.approx(0.25, abs=1e-6)
+        assert event.bid == pytest.approx(3499.90, abs=1e-6)
+        assert event.ask == pytest.approx(3500.10, abs=1e-6)
+        assert event.spread == pytest.approx(0.20, abs=1e-6)
+
+    def test_parse_ignores_non_market_data_messages(self):
+        adapter = self._make_adapter()
+        assert adapter._parse({"channel": "heartbeats", "events": []}) == []
+        assert adapter._parse({"type": "subscriptions"}) == []
 
 
 class TestIngestionEngine:

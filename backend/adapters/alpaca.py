@@ -8,9 +8,11 @@ Docs: https://docs.alpaca.markets/reference/stockdatastream
 """
 import json
 import logging
+import ssl
 from datetime import datetime, timezone
 from typing import AsyncIterator, Dict, List, Optional
 
+import certifi
 import websockets
 from websockets.exceptions import ConnectionClosed
 
@@ -20,6 +22,7 @@ from backend.models.price_event import PriceEvent
 logger = logging.getLogger(__name__)
 
 _WS_URL = "wss://stream.data.alpaca.markets/v2/{feed}"
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 
 class AlpacaAdapter(BaseAdapter):
@@ -35,7 +38,12 @@ class AlpacaAdapter(BaseAdapter):
 
     async def connect(self) -> None:
         url = _WS_URL.format(feed=self._feed)
-        self._ws = await websockets.connect(url, ping_interval=20, ping_timeout=10)
+        self._ws = await websockets.connect(
+            url,
+            ping_interval=20,
+            ping_timeout=10,
+            ssl=_SSL_CONTEXT,
+        )
 
         # Receive connection welcome
         raw = await self._ws.recv()

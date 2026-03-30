@@ -50,23 +50,57 @@ async def get_candles(
 
     result = await db.execute(
         text(f"""
+            WITH bucketed AS (
+                SELECT
+                    date_bin(
+                        CAST(:interval AS interval),
+                        time,
+                        TIMESTAMPTZ '2001-01-01 00:00:00+00'
+                    ) AS bucket,
+                    time,
+                    price,
+                    volume,
+                    row_number() OVER (
+                        PARTITION BY date_bin(
+                            CAST(:interval AS interval),
+                            time,
+                            TIMESTAMPTZ '2001-01-01 00:00:00+00'
+                        )
+                        ORDER BY time ASC
+                    ) AS rn_open,
+                    row_number() OVER (
+                        PARTITION BY date_bin(
+                            CAST(:interval AS interval),
+                            time,
+                            TIMESTAMPTZ '2001-01-01 00:00:00+00'
+                        )
+                        ORDER BY time DESC
+                    ) AS rn_close
+                FROM ticks
+                WHERE symbol = :symbol
+                  AND time >= :start
+                  AND time <= :end
+            )
             SELECT
-                time_bucket('{interval}', time) AS bucket,
-                first(price, time)  AS open,
-                max(price)          AS high,
-                min(price)          AS low,
-                last(price, time)   AS close,
-                sum(volume)         AS volume,
-                count(*)            AS ticks
-            FROM ticks
-            WHERE symbol = :symbol
-              AND time >= :start
-              AND time <= :end
+                bucket,
+                max(CASE WHEN rn_open = 1 THEN price END) AS open,
+                max(price)                                AS high,
+                min(price)                                AS low,
+                max(CASE WHEN rn_close = 1 THEN price END) AS close,
+                sum(volume)                               AS volume,
+                count(*)                                  AS ticks
+            FROM bucketed
             GROUP BY bucket
             ORDER BY bucket DESC
             LIMIT :limit
         """),
-        {"symbol": symbol.upper(), "start": start, "end": end, "limit": limit},
+        {
+            "symbol": symbol.upper(),
+            "start": start,
+            "end": end,
+            "limit": limit,
+            "interval": interval,
+        },
     )
     rows = result.fetchall()
 

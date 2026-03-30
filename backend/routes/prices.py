@@ -10,15 +10,34 @@ router = APIRouter(prefix="/api", tags=["prices"])
 async def list_symbols(db: AsyncSession = Depends(get_db)):
     """List all symbols with data, their source, and time of last tick."""
     result = await db.execute(text("""
+        WITH latest AS (
+            SELECT DISTINCT ON (symbol, source)
+                symbol,
+                source,
+                time AS last_tick,
+                price AS last_price
+            FROM ticks
+            ORDER BY symbol, source, time DESC
+        ),
+        counts AS (
+            SELECT
+                symbol,
+                source,
+                count(*) AS tick_count
+            FROM ticks
+            GROUP BY symbol, source
+        )
         SELECT
-            symbol,
-            source,
-            max(time)   AS last_tick,
-            count(*)    AS tick_count,
-            last(price, time) AS last_price
-        FROM ticks
-        GROUP BY symbol, source
-        ORDER BY symbol
+            latest.symbol,
+            latest.source,
+            latest.last_tick,
+            counts.tick_count,
+            latest.last_price
+        FROM latest
+        JOIN counts
+          ON counts.symbol = latest.symbol
+         AND counts.source = latest.source
+        ORDER BY latest.symbol
     """))
     rows = result.fetchall()
     return [

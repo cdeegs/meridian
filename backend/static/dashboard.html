@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meridian Dashboard</title>
+  <style>
+    :root {
+      --paper: #f6f0e7;
+      --paper-strong: #fffaf2;
+      --ink: #17324a;
+      --ink-soft: #52697c;
+      --emerald: #0b8b6b;
+      --emerald-soft: rgba(11, 139, 107, 0.12);
+      --amber: #c98a24;
+      --amber-soft: rgba(201, 138, 36, 0.14);
+      --danger: #c24f4f;
+      --border: rgba(23, 50, 74, 0.12);
+      --shadow: 0 24px 60px rgba(23, 50, 74, 0.12);
+      --radius: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(11, 139, 107, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(201, 138, 36, 0.15), transparent 24%),
+        linear-gradient(180deg, #f8f3ea 0%, #efe6d9 100%);
+    }
+
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.7fr 1fr;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .panel {
+      background: rgba(255, 250, 242, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .hero-copy {
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-copy::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -110px auto;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(11, 139, 107, 0.18), rgba(201, 138, 36, 0.18));
+      filter: blur(1px);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--emerald-soft);
+      color: var(--emerald);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 16px 0 12px;
+      font-size: clamp(2.2rem, 4vw, 4rem);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+
+    .hero-copy p {
+      margin: 0;
+      max-width: 680px;
+      color: var(--ink-soft);
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .status-panel {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(23, 50, 74, 0.08);
+      font-weight: 700;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 0 6px rgba(201, 138, 36, 0.16);
+      transition: background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .status-dot.live {
+      background: var(--emerald);
+      box-shadow: 0 0 0 6px rgba(11, 139, 107, 0.16);
+    }
+
+    .status-dot.dead {
+      background: var(--danger);
+      box-shadow: 0 0 0 6px rgba(194, 79, 79, 0.14);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .stat {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(23, 50, 74, 0.05);
+    }
+
+    .stat-label {
+      margin: 0 0 6px;
+      font-size: 12px;
+      color: var(--ink-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .stat-value {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
+      gap: 20px;
+    }
+
+    .board {
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .section-header,
+    .sidebar-section header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-header h2,
+    .sidebar-section h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      letter-spacing: -0.03em;
+    }
+
+    .section-header small,
+    .sidebar-section small {
+      color: var(--ink-soft);
+    }
+
+    .market-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+
+    .market-card {
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--paper-strong);
+      border: 1px solid rgba(23, 50, 74, 0.08);
+      display: grid;
+      gap: 14px;
+      min-height: 210px;
+    }
+
+    .market-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .market-symbol {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+    }
+
+    .market-meta {
+      margin: 4px 0 0;
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      font-size: 12px;
+      color: var(--ink-soft);
+    }
+
+    .price {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+    }
+
+    .subgrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .chip {
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: rgba(23, 50, 74, 0.06);
+    }
+
+    .chip-label {
+      margin: 0 0 6px;
+      font-size: 11px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .chip-value {
+      margin: 0;
+      font-size: 0.96rem;
+      font-weight: 700;
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .sidebar-section {
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink-soft);
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(23, 50, 74, 0.14);
+      background: white;
+      color: var(--ink);
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    .button-primary {
+      background: linear-gradient(135deg, var(--emerald), #0d6e63);
+      color: white;
+    }
+
+    .button-secondary {
+      background: rgba(23, 50, 74, 0.08);
+      color: var(--ink);
+    }
+
+    .button-danger {
+      background: rgba(194, 79, 79, 0.12);
+      color: var(--danger);
+    }
+
+    .collection {
+      display: grid;
+      gap: 10px;
+      max-height: 420px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .alert-card {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: var(--paper-strong);
+      border: 1px solid rgba(23, 50, 74, 0.08);
+      display: grid;
+      gap: 10px;
+    }
+
+    .alert-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pill.active {
+      background: var(--emerald-soft);
+      color: var(--emerald);
+    }
+
+    .pill.triggered {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .pill.disabled {
+      background: rgba(23, 50, 74, 0.08);
+      color: var(--ink-soft);
+    }
+
+    .alert-message {
+      margin: 0;
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    .alert-meta {
+      margin: 0;
+      color: var(--ink-soft);
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      font-size: 12px;
+    }
+
+    .alert-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .empty {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(23, 50, 74, 0.05);
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+    }
+
+    .form-note {
+      margin: 0;
+      font-size: 12px;
+      color: var(--ink-soft);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1080px) {
+      .hero,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .field-grid,
+      .stats,
+      .subgrid {
+        grid-template-columns: 1fr;
+      }
+
+      .shell {
+        padding-inline: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="panel hero-copy">
+        <div class="eyebrow">Meridian Live Terminal</div>
+        <h1>Streaming prices, indicators, and alerts in one view.</h1>
+        <p>
+          This demo dashboard subscribes directly to <code>/ws/stream</code>, renders live market updates,
+          and lets you create price or indicator alerts without leaving the page.
+        </p>
+      </div>
+
+      <aside class="panel status-panel">
+        <div class="status-badge">
+          <span id="connection-dot" class="status-dot"></span>
+          <span id="connection-text">Connecting...</span>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <p class="stat-label">Tracked Symbols</p>
+            <p id="tracked-symbols" class="stat-value">0</p>
+          </div>
+          <div class="stat">
+            <p class="stat-label">Active Alerts</p>
+            <p id="active-count" class="stat-value">0</p>
+          </div>
+          <div class="stat">
+            <p class="stat-label">Triggered Alerts</p>
+            <p id="triggered-count" class="stat-value">0</p>
+          </div>
+        </div>
+
+        <div class="stat">
+          <p class="stat-label">WebSocket</p>
+          <p class="stat-value" style="font-size: 0.95rem; line-height: 1.5;">
+            <code id="socket-url">/ws/stream</code>
+          </p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="layout">
+      <div class="panel board">
+        <div class="section-header">
+          <div>
+            <h2>Market Board</h2>
+            <small>Live symbol cards update as price and indicator messages arrive.</small>
+          </div>
+        </div>
+        <div id="market-grid" class="market-grid"></div>
+      </div>
+
+      <div class="sidebar">
+        <section class="panel sidebar-section">
+          <header>
+            <div>
+              <h2>Create Alert</h2>
+              <small>One-shot alerts: trigger once, then reactivate if needed.</small>
+            </div>
+          </header>
+
+          <form id="alert-form">
+            <div class="field-grid">
+              <label>
+                Symbol
+                <input id="alert-symbol" name="symbol" list="symbol-options" placeholder="AAPL or BTC-USD" required />
+                <datalist id="symbol-options"></datalist>
+              </label>
+
+              <label>
+                Condition
+                <select id="alert-condition" name="condition" required>
+                  <option value="price_above">Price Above</option>
+                  <option value="price_below">Price Below</option>
+                  <option value="rsi_above">RSI Above</option>
+                  <option value="rsi_below">RSI Below</option>
+                  <option value="macd_cross_up">MACD Cross Up</option>
+                  <option value="macd_cross_down">MACD Cross Down</option>
+                </select>
+              </label>
+            </div>
+
+            <label id="threshold-field">
+              Threshold
+              <input id="alert-threshold" name="threshold" type="number" step="any" placeholder="70 or 200" />
+            </label>
+
+            <button class="button-primary" type="submit">Create Alert</button>
+            <p class="form-note">
+              Price and RSI alerts need a numeric threshold. MACD cross alerts trigger when the MACD line crosses the signal line.
+            </p>
+          </form>
+        </section>
+
+        <section class="panel sidebar-section">
+          <header>
+            <div>
+              <h2>Alert Book</h2>
+              <small>Manage active, triggered, and disabled alerts.</small>
+            </div>
+          </header>
+          <div id="alert-book" class="collection"></div>
+        </section>
+
+        <section class="panel sidebar-section">
+          <header>
+            <div>
+              <h2>Recent Triggers</h2>
+              <small>Latest websocket alert events, most recent first.</small>
+            </div>
+          </header>
+          <div id="trigger-feed" class="collection"></div>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const DEFAULT_SYMBOLS = ["SPY", "AAPL", "TSLA", "BTC-USD", "ETH-USD", "SOL-USD"];
+    const THRESHOLD_CONDITIONS = new Set(["price_above", "price_below", "rsi_above", "rsi_below"]);
+    const conditionLabels = {
+      price_above: "Price Above",
+      price_below: "Price Below",
+      rsi_above: "RSI Above",
+      rsi_below: "RSI Below",
+      macd_cross_up: "MACD Cross Up",
+      macd_cross_down: "MACD Cross Down",
+    };
+
+    const state = {
+      ws: null,
+      reconnectTimer: null,
+      cards: new Map(),
+      alerts: [],
+      recentTriggers: [],
+      knownSymbols: new Set(DEFAULT_SYMBOLS),
+    };
+
+    const marketGrid = document.getElementById("market-grid");
+    const alertBook = document.getElementById("alert-book");
+    const triggerFeed = document.getElementById("trigger-feed");
+    const symbolOptions = document.getElementById("symbol-options");
+    const alertForm = document.getElementById("alert-form");
+    const alertCondition = document.getElementById("alert-condition");
+    const alertThreshold = document.getElementById("alert-threshold");
+    const thresholdField = document.getElementById("threshold-field");
+
+    function setConnection(stateName, text) {
+      const dot = document.getElementById("connection-dot");
+      const label = document.getElementById("connection-text");
+      dot.classList.remove("live", "dead");
+      if (stateName === "live") dot.classList.add("live");
+      if (stateName === "dead") dot.classList.add("dead");
+      label.textContent = text;
+    }
+
+    function formatNumber(value, digits = 2) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+      return Number(value).toLocaleString(undefined, {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      });
+    }
+
+    function formatMaybe(value, digits = 2) {
+      if (value === null || value === undefined) return "—";
+      return formatNumber(value, digits);
+    }
+
+    function relativeTime(value) {
+      if (!value) return "waiting";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "waiting";
+      const delta = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+      if (delta < 60) return `${delta}s ago`;
+      if (delta < 3600) return `${Math.round(delta / 60)}m ago`;
+      return `${Math.round(delta / 3600)}h ago`;
+    }
+
+    function ensureCard(symbol) {
+      if (state.cards.has(symbol)) return state.cards.get(symbol);
+      const card = document.createElement("article");
+      card.className = "market-card";
+      card.innerHTML = `
+        <div class="market-top">
+          <div>
+            <p class="market-symbol">${symbol}</p>
+            <p class="market-meta" data-role="timestamp">Waiting for stream...</p>
+          </div>
+          <span class="pill active">Live</span>
+        </div>
+        <div>
+          <p class="price" data-role="price">—</p>
+        </div>
+        <div class="subgrid">
+          <div class="chip">
+            <p class="chip-label">Bid / Ask</p>
+            <p class="chip-value" data-role="bidask">—</p>
+          </div>
+          <div class="chip">
+            <p class="chip-label">Spread</p>
+            <p class="chip-value" data-role="spread">—</p>
+          </div>
+          <div class="chip">
+            <p class="chip-label">RSI 14</p>
+            <p class="chip-value" data-role="rsi">—</p>
+          </div>
+          <div class="chip">
+            <p class="chip-label">VWAP</p>
+            <p class="chip-value" data-role="vwap">—</p>
+          </div>
+          <div class="chip">
+            <p class="chip-label">SMA 20</p>
+            <p class="chip-value" data-role="sma20">—</p>
+          </div>
+          <div class="chip">
+            <p class="chip-label">MACD Hist</p>
+            <p class="chip-value" data-role="macdHist">—</p>
+          </div>
+        </div>
+      `;
+      marketGrid.appendChild(card);
+      state.cards.set(symbol, card);
+      return card;
+    }
+
+    function renderSymbolOptions() {
+      symbolOptions.innerHTML = "";
+      [...state.knownSymbols].sort().forEach((symbol) => {
+        const option = document.createElement("option");
+        option.value = symbol;
+        symbolOptions.appendChild(option);
+      });
+      document.getElementById("tracked-symbols").textContent = state.knownSymbols.size;
+    }
+
+    function updateMarketCard(message) {
+      const symbol = message.symbol;
+      state.knownSymbols.add(symbol);
+      renderSymbolOptions();
+      const card = ensureCard(symbol);
+      const price = message.price || {};
+      const indicators = message.indicators || {};
+
+      card.querySelector('[data-role="price"]').textContent =
+        price.price !== undefined ? formatNumber(price.price, 2) : "—";
+      card.querySelector('[data-role="timestamp"]').textContent =
+        price.timestamp ? `Updated ${relativeTime(price.timestamp)}` : "Waiting for stream...";
+      card.querySelector('[data-role="bidask"]').textContent =
+        price.bid !== undefined || price.ask !== undefined
+          ? `${formatMaybe(price.bid, 2)} / ${formatMaybe(price.ask, 2)}`
+          : "—";
+      card.querySelector('[data-role="spread"]').textContent = formatMaybe(price.spread, 4);
+      card.querySelector('[data-role="rsi"]').textContent = formatMaybe(indicators.rsi_14?.v, 2);
+      card.querySelector('[data-role="vwap"]').textContent = formatMaybe(indicators.vwap?.v, 2);
+      card.querySelector('[data-role="sma20"]').textContent = formatMaybe(indicators.sma_20?.v, 2);
+      card.querySelector('[data-role="macdHist"]').textContent = formatMaybe(indicators.macd?.histogram, 4);
+    }
+
+    function renderAlertBook() {
+      if (!state.alerts.length) {
+        alertBook.innerHTML = '<div class="empty">No alerts yet. Create one to start seeing trigger events.</div>';
+      } else {
+        alertBook.innerHTML = "";
+        state.alerts.forEach((alert) => {
+          const card = document.createElement("article");
+          card.className = "alert-card";
+          const thresholdText = alert.threshold === null || alert.threshold === undefined
+            ? "No threshold"
+            : `Threshold ${alert.threshold}`;
+          const timestamp = alert.triggered_at || alert.created_at;
+          card.innerHTML = `
+            <header>
+              <div>
+                <strong>${alert.symbol}</strong>
+                <p class="alert-meta">${conditionLabels[alert.condition] || alert.condition}</p>
+              </div>
+              <span class="pill ${alert.status}">${alert.status}</span>
+            </header>
+            <p class="alert-message">${thresholdText}</p>
+            <p class="alert-meta">${timestamp ? new Date(timestamp).toLocaleString() : "Pending"}</p>
+            <div class="alert-actions">
+              ${alert.status === "active"
+                ? `<button class="button-danger" data-action="disable" data-id="${alert.id}">Disable</button>`
+                : `<button class="button-secondary" data-action="activate" data-id="${alert.id}">Reactivate</button>`}
+            </div>
+          `;
+          alertBook.appendChild(card);
+        });
+      }
+
+      const active = state.alerts.filter((alert) => alert.status === "active").length;
+      const triggered = state.alerts.filter((alert) => alert.status === "triggered").length;
+      document.getElementById("active-count").textContent = active;
+      document.getElementById("triggered-count").textContent = triggered;
+    }
+
+    function renderTriggerFeed() {
+      if (!state.recentTriggers.length) {
+        triggerFeed.innerHTML = '<div class="empty">Triggered alerts will appear here in real time.</div>';
+        return;
+      }
+
+      triggerFeed.innerHTML = "";
+      state.recentTriggers.forEach((alert) => {
+        const card = document.createElement("article");
+        card.className = "alert-card";
+        card.innerHTML = `
+          <header>
+            <div>
+              <strong>${alert.symbol}</strong>
+              <p class="alert-meta">${conditionLabels[alert.condition] || alert.condition}</p>
+            </div>
+            <span class="pill triggered">Triggered</span>
+          </header>
+          <p class="alert-message">${alert.message}</p>
+          <p class="alert-meta">${alert.triggered_at ? new Date(alert.triggered_at).toLocaleString() : "Just now"}</p>
+        `;
+        triggerFeed.appendChild(card);
+      });
+    }
+
+    async function refreshAlerts() {
+      const response = await fetch("/api/alerts");
+      if (!response.ok) return;
+      const payload = await response.json();
+      state.alerts = payload.alerts || [];
+      renderAlertBook();
+    }
+
+    async function hydrateSymbols() {
+      try {
+        const response = await fetch("/api/symbols");
+        if (!response.ok) throw new Error("No symbols");
+        const symbols = await response.json();
+        symbols.forEach((item) => state.knownSymbols.add(item.symbol));
+      } catch (error) {
+        DEFAULT_SYMBOLS.forEach((symbol) => state.knownSymbols.add(symbol));
+      }
+
+      renderSymbolOptions();
+      [...state.knownSymbols].forEach((symbol) => ensureCard(symbol));
+    }
+
+    function connectSocket() {
+      clearTimeout(state.reconnectTimer);
+      setConnection("idle", "Connecting...");
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const socketUrl = `${protocol}://${window.location.host}/ws/stream`;
+      document.getElementById("socket-url").textContent = socketUrl;
+
+      const ws = new WebSocket(socketUrl);
+      state.ws = ws;
+
+      ws.addEventListener("open", () => {
+        setConnection("live", "Live stream connected");
+        ws.send(JSON.stringify({ action: "subscribe", symbols: ["*"] }));
+      });
+
+      ws.addEventListener("message", (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "market_update") {
+          updateMarketCard(message);
+        } else if (message.type === "alert_triggered") {
+          state.recentTriggers.unshift(message.alert);
+          state.recentTriggers = state.recentTriggers.slice(0, 12);
+          renderTriggerFeed();
+          refreshAlerts();
+        }
+      });
+
+      ws.addEventListener("close", () => {
+        setConnection("dead", "Stream reconnecting...");
+        state.reconnectTimer = setTimeout(connectSocket, 2500);
+      });
+
+      ws.addEventListener("error", () => {
+        ws.close();
+      });
+    }
+
+    function updateThresholdVisibility() {
+      const needsThreshold = THRESHOLD_CONDITIONS.has(alertCondition.value);
+      thresholdField.style.display = needsThreshold ? "grid" : "none";
+      alertThreshold.required = needsThreshold;
+      if (!needsThreshold) alertThreshold.value = "";
+    }
+
+    async function handleAlertSubmit(event) {
+      event.preventDefault();
+
+      const payload = {
+        symbol: document.getElementById("alert-symbol").value.trim().toUpperCase(),
+        condition: alertCondition.value,
+      };
+      if (THRESHOLD_CONDITIONS.has(payload.condition)) {
+        payload.threshold = Number(alertThreshold.value);
+      }
+
+      const response = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        alert("Unable to create alert. Check the symbol and threshold.");
+        return;
+      }
+
+      alertForm.reset();
+      updateThresholdVisibility();
+      await refreshAlerts();
+      document.getElementById("alert-symbol").focus();
+    }
+
+    async function handleAlertAction(event) {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+
+      const action = button.dataset.action;
+      const alertId = button.dataset.id;
+      const endpoint = `/api/alerts/${alertId}/${action === "activate" ? "activate" : "disable"}`;
+
+      const response = await fetch(endpoint, { method: "POST" });
+      if (!response.ok) {
+        alert("Unable to update alert state.");
+        return;
+      }
+
+      await refreshAlerts();
+    }
+
+    async function bootstrap() {
+      await hydrateSymbols();
+      await refreshAlerts();
+      renderTriggerFeed();
+      updateThresholdVisibility();
+      connectSocket();
+    }
+
+    alertCondition.addEventListener("change", updateThresholdVisibility);
+    alertForm.addEventListener("submit", handleAlertSubmit);
+    alertBook.addEventListener("click", handleAlertAction);
+
+    bootstrap();
+  </script>
+</body>
+</html>

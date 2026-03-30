@@ -5,14 +5,14 @@ Runs on app startup. Uses AUTOCOMMIT for DDL that can't run inside a transaction
 (create_hypertable, continuous aggregates, retention policies).
 """
 import logging
+
 from sqlalchemy import text
+
 from backend.db.database import engine
 
 logger = logging.getLogger(__name__)
 
-# Statements that require AUTOCOMMIT (TimescaleDB DDL)
-_AUTOCOMMIT_STMTS = [
-    "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE",
+_BASE_STMTS = [
     """
     CREATE TABLE IF NOT EXISTS ticks (
         time        TIMESTAMPTZ NOT NULL,
@@ -25,7 +25,6 @@ _AUTOCOMMIT_STMTS = [
         source      TEXT NOT NULL
     )
     """,
-    "SELECT create_hypertable('ticks', 'time', if_not_exists => TRUE)",
     """
     CREATE INDEX IF NOT EXISTS idx_ticks_symbol_time
         ON ticks (symbol, time DESC)
@@ -39,11 +38,32 @@ _AUTOCOMMIT_STMTS = [
         value       JSONB NOT NULL
     )
     """,
-    "SELECT create_hypertable('indicators', 'time', if_not_exists => TRUE)",
     """
     CREATE INDEX IF NOT EXISTS idx_indicators_symbol_indicator_time
         ON indicators (symbol, indicator, time DESC)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS alerts (
+        id            TEXT PRIMARY KEY,
+        symbol        TEXT NOT NULL,
+        condition     TEXT NOT NULL,
+        threshold     DOUBLE PRECISION,
+        status        TEXT NOT NULL DEFAULT 'active',
+        triggered_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_alerts_symbol_status_created
+        ON alerts (symbol, status, created_at DESC)
+    """,
+]
+
+# Statements that require AUTOCOMMIT (TimescaleDB DDL)
+_TIMESCALE_STMTS = [
+    "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE",
+    "SELECT create_hypertable('ticks', 'time', if_not_exists => TRUE)",
+    "SELECT create_hypertable('indicators', 'time', if_not_exists => TRUE)",
     # Continuous aggregate for 1-minute candles
     """
     CREATE MATERIALIZED VIEW IF NOT EXISTS candles_1m
@@ -75,8 +95,28 @@ _AUTOCOMMIT_STMTS = [
 
 async def init_schema() -> None:
     """Initialize TimescaleDB schema. Safe to call on every startup."""
-    async with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        for stmt in _AUTOCOMMIT_STMTS:
+    async with engine.begin() as conn:
+        for stmt in _BASE_STMTS:
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            await conn.execute(text(stmt))
+
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb')")
+        )
+        timescale_available = bool(result.scalar())
+
+    if not timescale_available:
+        logger.warning(
+            "TimescaleDB extension not available — running in plain Postgres compatibility mode"
+        )
+        return
+
+    async with engine.connect() as conn:
+        conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+        for stmt in _TIMESCALE_STMTS:
             stmt = stmt.strip()
             if not stmt:
                 continue
@@ -84,11 +124,10 @@ async def init_schema() -> None:
                 await conn.execute(text(stmt))
             except Exception as e:
                 msg = str(e).lower()
-                # Ignore expected idempotency errors
                 if any(k in msg for k in ("already exists", "already a hypertable")):
                     logger.debug("Skipped (already exists): %s...", stmt[:60])
                 else:
                     logger.error("Schema init failed on: %s", stmt[:80])
                     raise
 
-    logger.info("TimescaleDB schema ready")
+    logger.info("TimescaleDB schema ready (extension available)")

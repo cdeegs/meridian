@@ -57,6 +57,56 @@ _BASE_STMTS = [
     CREATE INDEX IF NOT EXISTS idx_alerts_symbol_status_created
         ON alerts (symbol, status, created_at DESC)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS study_profile_alerts (
+        id                 TEXT PRIMARY KEY,
+        symbol             TEXT NOT NULL,
+        timeframe          TEXT NOT NULL,
+        profile_key        TEXT NOT NULL,
+        delivery           TEXT NOT NULL DEFAULT 'telegram',
+        status             TEXT NOT NULL DEFAULT 'active',
+        last_signal        INTEGER NOT NULL DEFAULT 0,
+        last_evaluated_at  TIMESTAMPTZ,
+        last_triggered_at  TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(symbol, timeframe, profile_key, delivery)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_study_profile_alerts_symbol_status_updated
+        ON study_profile_alerts (symbol, status, updated_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS portfolios (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        strategy    TEXT,
+        notes       TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_portfolios_updated_at
+        ON portfolios (updated_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_assets (
+        id              TEXT PRIMARY KEY,
+        portfolio_id    TEXT NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+        symbol          TEXT NOT NULL,
+        asset_type      TEXT NOT NULL,
+        allocation_pct  DOUBLE PRECISION,
+        strategy        TEXT,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_portfolio_assets_portfolio_created
+        ON portfolio_assets (portfolio_id, created_at DESC)
+    """,
 ]
 
 # Statements that require AUTOCOMMIT (TimescaleDB DDL)

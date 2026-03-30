@@ -1,9 +1,27 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+
 from backend.db.database import get_db
 
 router = APIRouter(prefix="/api", tags=["prices"])
+logger = logging.getLogger(__name__)
+_stock_market_data = None
+
+
+def set_stock_market_data_client(client) -> None:
+    global _stock_market_data
+    _stock_market_data = client
+
+
+def set_alpaca_market_data_client(client) -> None:
+    set_stock_market_data_client(client)
+
+
+def _is_equity_symbol(symbol: str) -> bool:
+    return "-" not in symbol and "/" not in symbol
 
 
 @router.get("/symbols")
@@ -40,8 +58,8 @@ async def list_symbols(db: AsyncSession = Depends(get_db)):
         ORDER BY latest.symbol
     """))
     rows = result.fetchall()
-    return [
-        {
+    merged = {
+        (r.symbol, r.source): {
             "symbol": r.symbol,
             "source": r.source,
             "last_tick": r.last_tick,
@@ -49,7 +67,25 @@ async def list_symbols(db: AsyncSession = Depends(get_db)):
             "last_price": r.last_price,
         }
         for r in rows
-    ]
+    }
+
+    if _stock_market_data is not None:
+        try:
+            snapshots = await _stock_market_data.fetch_watchlist_snapshots()
+            for symbol, snapshot in snapshots.items():
+                source = snapshot.get("source", "stock-market-data")
+                existing = merged.get((symbol, source), {})
+                merged[(symbol, source)] = {
+                    "symbol": symbol,
+                    "source": source,
+                    "last_tick": snapshot.get("timestamp") or existing.get("last_tick"),
+                    "tick_count": existing.get("tick_count", 0),
+                    "last_price": snapshot.get("price") or existing.get("last_price"),
+                }
+        except Exception as exc:
+            logger.warning("Unable to fetch stock watchlist snapshots: %s", exc)
+
+    return sorted(merged.values(), key=lambda item: (item["symbol"], item["source"]))
 
 
 @router.get("/prices/{symbol}")
@@ -67,6 +103,25 @@ async def get_latest_price(symbol: str, db: AsyncSession = Depends(get_db)):
     )
     row = result.fetchone()
     if not row:
+        if _stock_market_data is not None and _is_equity_symbol(symbol.upper()):
+            try:
+                snapshot = await _stock_market_data.fetch_snapshot(symbol.upper())
+            except Exception as exc:
+                logger.warning("Unable to fetch stock snapshot for %s: %s", symbol.upper(), exc)
+                snapshot = None
+
+            if snapshot and snapshot.get("price") is not None:
+                return {
+                    "symbol": snapshot["symbol"],
+                    "price": snapshot["price"],
+                    "volume": snapshot.get("volume"),
+                    "bid": snapshot.get("bid"),
+                    "ask": snapshot.get("ask"),
+                    "spread": snapshot.get("spread"),
+                    "source": snapshot["source"],
+                    "timestamp": snapshot.get("timestamp"),
+                }
+
         raise HTTPException(status_code=404, detail=f"No data for symbol {symbol.upper()}")
     return {
         "symbol": row.symbol,

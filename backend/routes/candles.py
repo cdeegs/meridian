@@ -1,59 +1,165 @@
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
+from backend.services.candle_history import coverage_looks_complete, merge_candles
 
 router = APIRouter(prefix="/api", tags=["candles"])
+logger = logging.getLogger(__name__)
+_stock_market_data = None
+_crypto_market_data = None
 
-_TIMEFRAME_INTERVALS = {
-    "1m":  "1 minute",
-    "5m":  "5 minutes",
-    "15m": "15 minutes",
-    "1h":  "1 hour",
-    "4h":  "4 hours",
-    "1d":  "1 day",
+_TIMEFRAME_SPECS = {
+    "1m": {"bucket_width": timedelta(minutes=1), "window": timedelta(hours=24)},
+    "5m": {"bucket_width": timedelta(minutes=5), "window": timedelta(hours=24)},
+    "15m": {"bucket_width": timedelta(minutes=15), "window": timedelta(days=3)},
+    "30m": {"bucket_width": timedelta(minutes=30), "window": timedelta(days=5)},
+    "1h": {"bucket_width": timedelta(hours=1), "window": timedelta(days=14)},
+    "2h": {"bucket_width": timedelta(hours=2), "window": timedelta(days=21)},
+    "4h": {"bucket_width": timedelta(hours=4), "window": timedelta(days=60)},
+    "6h": {"bucket_width": timedelta(hours=6), "window": timedelta(days=90)},
+    "12h": {"bucket_width": timedelta(hours=12), "window": timedelta(days=180)},
+    "1d": {"bucket_width": timedelta(days=1), "window": timedelta(days=365)},
+    "2d": {"bucket_width": timedelta(days=2), "window": timedelta(days=730)},
+    "1w": {"bucket_width": timedelta(days=7), "window": timedelta(days=1825)},
 }
+
+
+def set_stock_market_data_client(client) -> None:
+    global _stock_market_data
+    _stock_market_data = client
+
+
+def set_alpaca_market_data_client(client) -> None:
+    set_stock_market_data_client(client)
+
+
+def set_crypto_market_data_client(client) -> None:
+    global _crypto_market_data
+    _crypto_market_data = client
+
+
+def set_coinbase_market_data_client(client) -> None:
+    set_crypto_market_data_client(client)
+
+
+def _is_equity_symbol(symbol: str) -> bool:
+    return "-" not in symbol and "/" not in symbol
 
 
 @router.get("/candles/{symbol}")
 async def get_candles(
     symbol: str,
-    timeframe: str = Query(default="1m", description="1m | 5m | 15m | 1h | 4h | 1d"),
+    timeframe: str = Query(default="1m", description="1m | 5m | 15m | 30m | 1h | 2h | 4h | 6h | 12h | 1d | 2d | 1w"),
     start: Optional[datetime] = Query(default=None, description="ISO8601 start time (UTC)"),
     end: Optional[datetime] = Query(default=None, description="ISO8601 end time (UTC)"),
     limit: int = Query(default=200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    OHLCV candles for a symbol.
-
-    Uses TimescaleDB time_bucket() — no materialized view needed for arbitrary timeframes.
-    Default: last 24 hours at 1-minute resolution.
-    """
-    if timeframe not in _TIMEFRAME_INTERVALS:
+    timeframe_spec = _TIMEFRAME_SPECS.get(timeframe)
+    if timeframe_spec is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid timeframe '{timeframe}'. Valid: {', '.join(_TIMEFRAME_INTERVALS)}",
+            detail=f"Invalid timeframe '{timeframe}'. Valid: {', '.join(_TIMEFRAME_SPECS)}",
         )
 
     now = datetime.now(timezone.utc)
     if end is None:
         end = now
     if start is None:
-        start = end - timedelta(hours=24)
+        start = end - timeframe_spec["window"]
+    if start > end:
+        raise HTTPException(status_code=400, detail="start must be earlier than end")
 
-    interval = _TIMEFRAME_INTERVALS[timeframe]
+    normalized_symbol = symbol.upper()
 
+    if _stock_market_data is not None and _is_equity_symbol(normalized_symbol):
+        try:
+            bars = await _stock_market_data.fetch_bars(
+                symbol=normalized_symbol,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                limit=limit,
+            )
+        except Exception as exc:
+            logger.warning("Unable to fetch stock bars for %s: %s", normalized_symbol, exc)
+            bars = []
+
+        if bars:
+            return {
+                "symbol": normalized_symbol,
+                "timeframe": timeframe,
+                "candles": bars[-limit:],
+            }
+
+    db_candles = await _load_db_candles(
+        symbol=normalized_symbol,
+        start=start,
+        end=end,
+        limit=limit,
+        bucket_width=timeframe_spec["bucket_width"],
+        db=db,
+    )
+
+    if _crypto_market_data is not None and not _is_equity_symbol(normalized_symbol):
+        provider_candles = []
+        if not coverage_looks_complete(
+            db_candles,
+            start=start,
+            end=end,
+            bucket_width=timeframe_spec["bucket_width"],
+            limit=limit,
+        ):
+            try:
+                provider_candles = await _crypto_market_data.fetch_bars(
+                    symbol=normalized_symbol,
+                    timeframe=timeframe,
+                    start=start,
+                    end=end,
+                    limit=limit,
+                )
+            except Exception as exc:
+                logger.warning("Unable to fetch crypto bars for %s: %s", normalized_symbol, exc)
+                provider_candles = []
+
+        merged_candles = merge_candles(db_candles, provider_candles)
+        if merged_candles:
+            return {
+                "symbol": normalized_symbol,
+                "timeframe": timeframe,
+                "candles": merged_candles[-limit:],
+            }
+
+    if not db_candles:
+        raise HTTPException(status_code=404, detail=f"No candle data for {normalized_symbol} in requested range")
+
+    return {
+        "symbol": normalized_symbol,
+        "timeframe": timeframe,
+        "candles": db_candles,
+    }
+
+
+async def _load_db_candles(
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    limit: int,
+    bucket_width: timedelta,
+    db: AsyncSession,
+) -> list[dict]:
     result = await db.execute(
-        text(f"""
+        text("""
             WITH bucketed AS (
                 SELECT
                     date_bin(
-                        CAST(:interval AS interval),
+                        :bucket_width,
                         time,
                         TIMESTAMPTZ '2001-01-01 00:00:00+00'
                     ) AS bucket,
@@ -62,7 +168,7 @@ async def get_candles(
                     volume,
                     row_number() OVER (
                         PARTITION BY date_bin(
-                            CAST(:interval AS interval),
+                            :bucket_width,
                             time,
                             TIMESTAMPTZ '2001-01-01 00:00:00+00'
                         )
@@ -70,7 +176,7 @@ async def get_candles(
                     ) AS rn_open,
                     row_number() OVER (
                         PARTITION BY date_bin(
-                            CAST(:interval AS interval),
+                            :bucket_width,
                             time,
                             TIMESTAMPTZ '2001-01-01 00:00:00+00'
                         )
@@ -80,46 +186,47 @@ async def get_candles(
                 WHERE symbol = :symbol
                   AND time >= :start
                   AND time <= :end
+            ),
+            aggregated AS (
+                SELECT
+                    bucket,
+                    max(CASE WHEN rn_open = 1 THEN price END) AS open,
+                    max(price)                                AS high,
+                    min(price)                                AS low,
+                    max(CASE WHEN rn_close = 1 THEN price END) AS close,
+                    sum(volume)                               AS volume,
+                    count(*)                                  AS ticks
+                FROM bucketed
+                GROUP BY bucket
             )
-            SELECT
-                bucket,
-                max(CASE WHEN rn_open = 1 THEN price END) AS open,
-                max(price)                                AS high,
-                min(price)                                AS low,
-                max(CASE WHEN rn_close = 1 THEN price END) AS close,
-                sum(volume)                               AS volume,
-                count(*)                                  AS ticks
-            FROM bucketed
-            GROUP BY bucket
-            ORDER BY bucket DESC
-            LIMIT :limit
+            SELECT bucket, open, high, low, close, volume, ticks
+            FROM (
+                SELECT *
+                FROM aggregated
+                ORDER BY bucket DESC
+                LIMIT :limit
+            ) recent
+            ORDER BY bucket ASC
         """),
         {
-            "symbol": symbol.upper(),
+            "symbol": symbol,
             "start": start,
             "end": end,
             "limit": limit,
-            "interval": interval,
+            "bucket_width": bucket_width,
         },
     )
     rows = result.fetchall()
-
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"No candle data for {symbol.upper()} in requested range")
-
-    return {
-        "symbol": symbol.upper(),
-        "timeframe": timeframe,
-        "candles": [
-            {
-                "time": row.bucket,
-                "open": row.open,
-                "high": row.high,
-                "low": row.low,
-                "close": row.close,
-                "volume": row.volume,
-                "ticks": row.ticks,
-            }
-            for row in rows
-        ],
-    }
+    return [
+        {
+            "time": row.bucket,
+            "open": float(row.open),
+            "high": float(row.high),
+            "low": float(row.low),
+            "close": float(row.close),
+            "volume": float(row.volume or 0.0),
+            "ticks": row.ticks,
+        }
+        for row in rows
+        if row.open is not None and row.close is not None
+    ]

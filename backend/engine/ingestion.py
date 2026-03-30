@@ -23,6 +23,7 @@ from backend.models.price_event import PriceEvent
 if TYPE_CHECKING:
     from backend.engine.indicator_engine import IndicatorEngine
     from backend.services.alert_engine import AlertEngine
+    from backend.services.study_profile_alerts import StudyProfileAlertService
     from backend.websocket.manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -53,12 +54,14 @@ class IngestionEngine:
         db_engine: AsyncEngine,
         indicator_engine: Optional["IndicatorEngine"] = None,
         alert_engine: Optional["AlertEngine"] = None,
+        study_profile_alert_service: Optional["StudyProfileAlertService"] = None,
         broadcaster: Optional["ConnectionManager"] = None,
     ):
         self._settings = settings
         self._db_engine = db_engine
         self._indicator_engine = indicator_engine
         self._alert_engine = alert_engine
+        self._study_profile_alert_service = study_profile_alert_service
         self._broadcaster = broadcaster
         self._adapters: Dict[str, BaseAdapter] = {}
         self._adapter_symbols: Dict[str, List[str]] = {}
@@ -194,6 +197,7 @@ class IngestionEngine:
         """After a successful DB write, compute indicators and broadcast to WebSocket clients."""
         indicator_results: List[dict] = []
         alert_results: List[dict] = []
+        study_profile_alert_results: List[dict] = []
 
         if self._indicator_engine is not None:
             try:
@@ -209,9 +213,21 @@ class IngestionEngine:
             except Exception as e:
                 logger.error("Alert processing failed: %s", e)
 
+        if self._study_profile_alert_service is not None:
+            try:
+                study_profile_alert_results = await self._study_profile_alert_service.process_symbols(
+                    {event.symbol for event in batch}
+                )
+            except Exception as e:
+                logger.error("Study profile alert processing failed: %s", e)
+
         if self._broadcaster is not None:
             try:
-                await self._broadcaster.publish_batch(batch, indicator_results, alert_results)
+                await self._broadcaster.publish_batch(
+                    batch,
+                    indicator_results,
+                    alert_results + study_profile_alert_results,
+                )
             except Exception as e:
                 logger.error("WebSocket broadcast failed: %s", e)
 

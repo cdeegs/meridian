@@ -62,8 +62,9 @@ class AlertRule:
 
 
 class AlertEngine:
-    def __init__(self, db_engine: AsyncEngine):
+    def __init__(self, db_engine: AsyncEngine, notifier=None):
         self._db_engine = db_engine
+        self._notifier = notifier
         self._active_by_symbol: DefaultDict[str, List[AlertRule]] = defaultdict(list)
         self._last_indicator_values: DefaultDict[str, Dict[str, dict]] = defaultdict(dict)
         self._lock = asyncio.Lock()
@@ -197,6 +198,7 @@ class AlertEngine:
 
         if triggered_rules:
             await self._mark_triggered(triggered_rules)
+            await self._notify(alert_payloads)
 
         return alert_payloads
 
@@ -262,6 +264,18 @@ class AlertEngine:
                 self._active_by_symbol[symbol] = remaining
             else:
                 del self._active_by_symbol[symbol]
+
+    async def _notify(self, alert_payloads: List[dict]) -> None:
+        if self._notifier is None or not alert_payloads:
+            return
+
+        results = await asyncio.gather(
+            *(self._notifier.notify_alert(payload) for payload in alert_payloads),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("Alert notification failed: %s", result)
 
     def _evaluate_alert(
         self,

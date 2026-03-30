@@ -95,3 +95,26 @@ async def test_macd_cross_up_requires_previous_state():
 
     assert len(alerts) == 1
     assert alerts[0]["condition"] == "macd_cross_up"
+
+
+@pytest.mark.asyncio
+async def test_triggered_alert_invokes_notifier():
+    notifier = MagicMock()
+    notifier.notify_alert = AsyncMock()
+    engine = AlertEngine(MagicMock(), notifier=notifier)
+    engine._mark_triggered = AsyncMock()
+    engine._active_by_symbol["AAPL"].append(_alert())
+
+    batch = [
+        PriceEvent(
+            symbol="AAPL",
+            price=205.0,
+            source="alpaca",
+            timestamp=datetime.now(timezone.utc),
+        )
+    ]
+
+    alerts = await engine.process_batch(batch, [])
+
+    assert len(alerts) == 1
+    notifier.notify_alert.assert_awaited_once()

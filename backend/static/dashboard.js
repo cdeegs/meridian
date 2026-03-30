@@ -90,6 +90,11 @@ const VALID_TABS = new Set(["overview", "charts", "news", "alerts", "portfolios"
 const VALID_TIMEFRAMES = new Set(Object.keys(TIMEFRAME_MINUTES));
 const VALID_WINDOW_PRESETS = new Set(Object.keys(CHART_WINDOW_PRESETS));
 const VALID_PROFILE_KEYS = new Set(Object.keys(PROFILE_TITLES));
+const VALID_NEWS_FILTERS = new Set(["all", "macro", "geopolitics", "earnings", "analyst", "company", "stock", "crypto"]);
+const VALID_NEWS_IMPACTS = new Set(["all", "high", "medium", "low"]);
+const VALID_NEWS_BIASES = new Set(["all", "bullish", "bearish", "mixed", "unclear"]);
+const VALID_NEWS_HORIZONS = new Set(["all", "intraday", "swing", "regime"]);
+const VALID_NEWS_SORTS = new Set(["impact", "newest", "oldest", "source"]);
 
 const state = {
   activeTab: "overview",
@@ -115,6 +120,9 @@ const state = {
     symbol: "",
     marketFilter: "all",
     impact: "all",
+    bias: "all",
+    horizon: "all",
+    sort: "impact",
     selectedId: null,
     lastRefreshedAt: null,
   },
@@ -179,8 +187,12 @@ const newsMarketBrief = document.getElementById("news-market-brief");
 const newsSourceDirectory = document.getElementById("news-source-directory");
 const newsSymbol = document.getElementById("news-symbol");
 const newsImpact = document.getElementById("news-impact");
+const newsBias = document.getElementById("news-bias");
+const newsHorizon = document.getElementById("news-horizon");
+const newsSort = document.getElementById("news-sort");
 const newsStatus = document.getElementById("news-status");
 const newsLastUpdated = document.getElementById("news-last-updated");
+const newsSummaryStrip = document.getElementById("news-summary-strip");
 const portfolioForm = document.getElementById("portfolio-form");
 
 async function fetchWithTimeout(url, options = {}) {
@@ -211,6 +223,12 @@ function persistWorkspaceState() {
     window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
       activeTab: state.activeTab,
       marketFilter: state.marketFilter,
+      newsMarketFilter: state.news.marketFilter,
+      newsImpact: state.news.impact,
+      newsSymbol: state.news.symbol,
+      newsBias: state.news.bias,
+      newsHorizon: state.news.horizon,
+      newsSort: state.news.sort,
       chartAssetFilter: state.charts.assetFilter,
       chartSymbol: state.charts.symbol,
       chartTimeframe: state.charts.timeframe,
@@ -232,6 +250,27 @@ function hydrateWorkspaceState() {
   }
   if (typeof stored.marketFilter === "string") {
     state.marketFilter = stored.marketFilter;
+  }
+  if (typeof stored.newsMarketFilter === "string" && VALID_NEWS_FILTERS.has(stored.newsMarketFilter)) {
+    state.news.marketFilter = stored.newsMarketFilter;
+  }
+  if (typeof stored.newsImpact === "string" && VALID_NEWS_IMPACTS.has(stored.newsImpact)) {
+    state.news.impact = stored.newsImpact;
+  }
+  if (typeof stored.newsSymbol === "string") {
+    state.news.symbol = stored.newsSymbol.trim().toUpperCase();
+    if (state.news.symbol) {
+      state.knownSymbols.add(state.news.symbol);
+    }
+  }
+  if (typeof stored.newsBias === "string" && VALID_NEWS_BIASES.has(stored.newsBias)) {
+    state.news.bias = stored.newsBias;
+  }
+  if (typeof stored.newsHorizon === "string" && VALID_NEWS_HORIZONS.has(stored.newsHorizon)) {
+    state.news.horizon = stored.newsHorizon;
+  }
+  if (typeof stored.newsSort === "string" && VALID_NEWS_SORTS.has(stored.newsSort)) {
+    state.news.sort = stored.newsSort;
   }
   if (typeof stored.chartAssetFilter === "string") {
     state.charts.assetFilter = stored.chartAssetFilter;
@@ -648,6 +687,57 @@ function newsFacetLabel(value) {
   return labels[value] || String(value || "").replace(/_/g, " ");
 }
 
+function newsSourceForItem(item) {
+  return state.news.sources.find((source) => source.key === item.source_key) || null;
+}
+
+function safeUrl(value) {
+  try {
+    return new URL(value).toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function newsSiteUrl(item, source = null) {
+  const rawUrl = safeUrl(item?.url) || safeUrl(source?.url);
+  if (!rawUrl) return "";
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch (_) {
+    return "";
+  }
+}
+
+function newsSourceDomain(item, source = null) {
+  if (source?.domain) return source.domain.replace(/^www\./, "");
+  const siteUrl = newsSiteUrl(item, source);
+  if (!siteUrl) return "Source site";
+  return siteUrl.replace(/^https?:\/\//, "").replace(/^www\./, "");
+}
+
+function renderNewsLinkButtons(item, options = {}) {
+  const { className = "news-mini-link", includeSite = true, includeFeed = true } = options;
+  const source = newsSourceForItem(item);
+  const links = [];
+  const articleUrl = safeUrl(item?.url);
+  const siteUrl = newsSiteUrl(item, source);
+  const feedUrl = includeFeed ? safeUrl(source?.url) : "";
+
+  if (articleUrl) {
+    links.push(`<a class="${className}" data-news-external="article" href="${escapeHtml(articleUrl)}" target="_blank" rel="noreferrer">Read Article</a>`);
+  }
+  if (includeSite && siteUrl) {
+    links.push(`<a class="${className}" data-news-external="site" href="${escapeHtml(siteUrl)}" target="_blank" rel="noreferrer">Visit ${escapeHtml(newsSourceDomain(item, source))}</a>`);
+  }
+  if (feedUrl) {
+    links.push(`<a class="${className}" data-news-external="feed" href="${escapeHtml(feedUrl)}" target="_blank" rel="noreferrer">Open Feed</a>`);
+  }
+
+  return links.join("");
+}
+
 function selectedNewsItem() {
   return state.news.items.find((item) => item.id === state.news.selectedId) || state.news.items[0] || null;
 }
@@ -805,6 +895,52 @@ function renderNewsSources() {
   `).join("");
 }
 
+function renderNewsSummary() {
+  if (!newsSummaryStrip) return;
+  if (!state.news.items.length && !state.news.sources.length) {
+    newsSummaryStrip.innerHTML = '<div class="empty">News scope, source coverage, and refresh status will appear here once the feed loads.</div>';
+    return;
+  }
+
+  const scopeLabel = newsFacetLabel(state.news.marketFilter);
+  const impactLabel = state.news.impact === "all"
+    ? "All impact"
+    : `${state.news.impact.charAt(0).toUpperCase()}${state.news.impact.slice(1)}+`;
+  const symbolLabel = state.news.symbol || "All tracked";
+  const sortLabel = {
+    impact: "Impact",
+    newest: "Newest",
+    oldest: "Oldest",
+    source: "Source A-Z",
+  }[state.news.sort] || "Impact";
+  const refreshLabel = state.news.lastRefreshedAt ? relativeTime(state.news.lastRefreshedAt) : "Waiting";
+  const biasLabel = state.news.bias === "all" ? "All bias" : `${state.news.bias.charAt(0).toUpperCase()}${state.news.bias.slice(1)} bias`;
+  const horizonLabel = state.news.horizon === "all" ? "All horizons" : `${state.news.horizon.charAt(0).toUpperCase()}${state.news.horizon.slice(1)} horizon`;
+
+  newsSummaryStrip.innerHTML = `
+    <article class="news-summary-card">
+      <p class="news-summary-label">Scope</p>
+      <p class="news-summary-value">${escapeHtml(scopeLabel)}</p>
+      <p class="muted">Symbol ${escapeHtml(symbolLabel)}</p>
+    </article>
+    <article class="news-summary-card">
+      <p class="news-summary-label">Headlines</p>
+      <p class="news-summary-value">${escapeHtml(String(state.news.items.length))}</p>
+      <p class="muted">${escapeHtml(`${impactLabel} | ${biasLabel}`)}</p>
+    </article>
+    <article class="news-summary-card">
+      <p class="news-summary-label">Sources</p>
+      <p class="news-summary-value">${escapeHtml(String(state.news.sources.length))}</p>
+      <p class="muted">${escapeHtml(`${horizonLabel} | live feed directory below`)}</p>
+    </article>
+    <article class="news-summary-card">
+      <p class="news-summary-label">Sort / Refresh</p>
+      <p class="news-summary-value">${escapeHtml(sortLabel)}</p>
+      <p class="muted">${escapeHtml(`${refreshLabel} | direct article, site, and feed links`)}</p>
+    </article>
+  `;
+}
+
 function renderOverviewNewsTape() {
   if (!state.news.items.length) {
     overviewNewsTape.innerHTML = '<div class="empty">News flow will appear here once the feed refreshes.</div>';
@@ -864,6 +1000,15 @@ function renderNewsFeed() {
       <div class="news-tag-row">
         ${(item.tags || []).slice(0, 5).map((tag) => `<span class="pill neutral">${escapeHtml(tag)}</span>`).join("")}
       </div>
+      <div class="news-card-footer">
+        <div class="news-source-meta">
+          <span class="pill neutral">${escapeHtml(item.source_label)}</span>
+          <span class="muted">${escapeHtml(newsSourceDomain(item, newsSourceForItem(item)))}</span>
+        </div>
+        <div class="news-card-links">
+          ${renderNewsLinkButtons(item)}
+        </div>
+      </div>
     </article>
   `).join("");
 }
@@ -895,6 +1040,14 @@ function renderNewsDetail() {
       </button>
     `
     : "";
+  const detailActions = chartSymbolAction
+    ? `
+      <div class="portfolio-actions">
+        ${chartSymbolAction}
+      </div>
+    `
+    : "";
+  const source = newsSourceForItem(item);
 
   newsDetail.innerHTML = `
     <div class="section-head">
@@ -902,7 +1055,10 @@ function renderNewsDetail() {
         <h2 class="section-title">Impact Read</h2>
         <p class="note">${escapeHtml(item.source_label)} | ${escapeHtml(formatNewsTimestamp(item.published_at))}</p>
       </div>
-      <span class="pill ${item.impact_level === "high" ? "caution" : item.impact_level === "medium" ? "info" : "neutral"}">${escapeHtml(item.impact_level)} impact</span>
+      <div class="news-detail-links">
+        <span class="pill ${item.impact_level === "high" ? "caution" : item.impact_level === "medium" ? "info" : "neutral"}">${escapeHtml(item.impact_level)} impact</span>
+        ${renderNewsLinkButtons(item, { className: "news-mini-link", includeSite: true, includeFeed: true })}
+      </div>
     </div>
 
     <div class="news-detail-stack">
@@ -926,6 +1082,10 @@ function renderNewsDetail() {
           <p class="overview-kicker">Market</p>
           <p class="overview-value">${escapeHtml(newsFacetLabel(item.market_bucket))}</p>
         </div>
+        <div class="overview-line">
+          <p class="overview-kicker">Source Site</p>
+          <p class="overview-value">${escapeHtml(newsSourceDomain(item, source))}</p>
+        </div>
       </div>
 
       <div class="profile-note">
@@ -947,10 +1107,7 @@ function renderNewsDetail() {
         ${(item.tags || []).map((tag) => `<span class="pill neutral">${escapeHtml(tag)}</span>`).join("")}
       </div>
 
-      <div class="portfolio-actions">
-        ${chartSymbolAction}
-        <a class="button-secondary news-link-button" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">Open Source</a>
-      </div>
+      ${detailActions}
     </div>
   `;
 }
@@ -961,6 +1118,9 @@ async function refreshNews() {
     const params = new URLSearchParams({
       market_bucket: state.news.marketFilter,
       impact: state.news.impact,
+      bias: state.news.bias,
+      horizon: state.news.horizon,
+      sort: state.news.sort,
       limit: "50",
     });
     if (state.news.symbol.trim()) params.set("symbol", state.news.symbol.trim().toUpperCase());
@@ -974,12 +1134,13 @@ async function refreshNews() {
     if (!state.news.items.some((item) => item.id === state.news.selectedId)) {
       state.news.selectedId = state.news.items[0]?.id || null;
     }
+    persistWorkspaceState();
     newsLastUpdated.className = "pill info";
     newsLastUpdated.textContent = state.news.lastRefreshedAt
       ? `Updated ${relativeTime(state.news.lastRefreshedAt)}`
       : "Waiting for refresh";
     newsStatus.textContent = state.news.items.length
-      ? `Showing ${state.news.items.length} headlines ranked by impact and recency.`
+      ? `Showing ${state.news.items.length} headlines sorted by ${state.news.sort}, with direct article, site, and feed links.`
       : "No headlines matched the current filters.";
   } catch (error) {
     state.news.items = [];
@@ -993,6 +1154,7 @@ async function refreshNews() {
 
   renderOverviewMarketBrief();
   renderOverviewNewsTape();
+  renderNewsSummary();
   renderNewsMarketBrief();
   renderNewsSources();
   renderNewsTape();
@@ -2043,10 +2205,14 @@ function switchTab(tabName) {
   if (tabName === "news") {
     newsSymbol.value = state.news.symbol;
     newsImpact.value = state.news.impact;
+    newsBias.value = state.news.bias;
+    newsHorizon.value = state.news.horizon;
+    newsSort.value = state.news.sort;
     document.querySelectorAll("[data-news-filter]").forEach((button) => {
       button.classList.toggle("active", button.dataset.newsFilter === state.news.marketFilter);
     });
     if (state.news.items.length) {
+      renderNewsSummary();
       renderNewsTape();
       renderNewsFeed();
       renderNewsDetail();
@@ -2669,17 +2835,38 @@ function bindNewsSection() {
       document.querySelectorAll("[data-news-filter]").forEach((chip) => {
         chip.classList.toggle("active", chip.dataset.newsFilter === state.news.marketFilter);
       });
+      persistWorkspaceState();
       await refreshNews();
     });
   });
 
   newsSymbol.addEventListener("change", async () => {
     state.news.symbol = newsSymbol.value.trim().toUpperCase();
+    persistWorkspaceState();
     await refreshNews();
   });
 
   newsImpact.addEventListener("change", async () => {
     state.news.impact = newsImpact.value;
+    persistWorkspaceState();
+    await refreshNews();
+  });
+
+  newsBias.addEventListener("change", async () => {
+    state.news.bias = newsBias.value;
+    persistWorkspaceState();
+    await refreshNews();
+  });
+
+  newsHorizon.addEventListener("change", async () => {
+    state.news.horizon = newsHorizon.value;
+    persistWorkspaceState();
+    await refreshNews();
+  });
+
+  newsSort.addEventListener("change", async () => {
+    state.news.sort = newsSort.value;
+    persistWorkspaceState();
     await refreshNews();
   });
 
@@ -2692,6 +2879,7 @@ function bindNewsSection() {
   });
 
   newsFeed.addEventListener("click", (event) => {
+    if (event.target.closest("[data-news-external]")) return;
     const card = event.target.closest("[data-news-open]");
     if (!card) return;
     selectNewsItem(card.dataset.newsOpen);
@@ -2704,6 +2892,7 @@ function bindNewsSection() {
   });
 
   newsDetail.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-news-external]")) return;
     const button = event.target.closest('[data-action="focus-news-chart"]');
     if (!button) return;
     state.charts.symbol = button.dataset.symbol;

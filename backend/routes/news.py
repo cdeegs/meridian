@@ -28,6 +28,9 @@ async def list_news(
         description="all | macro | stock | crypto | geopolitics | earnings | analyst | company | regulation | security",
     ),
     impact: str = Query(default="all", description="all | high | medium | low"),
+    bias: str = Query(default="all", description="all | bullish | bearish | mixed | unclear"),
+    horizon: str = Query(default="all", description="all | intraday | swing | regime"),
+    sort: str = Query(default="impact", description="impact | newest | oldest | source"),
     limit: int = Query(default=40, ge=1, le=100),
 ):
     if market_bucket not in {"all", "macro", "stock", "crypto", "geopolitics", "earnings", "analyst", "company", "regulation", "security"}:
@@ -37,11 +40,20 @@ async def list_news(
         )
     if impact not in {"all", "high", "medium", "low"}:
         raise HTTPException(status_code=400, detail="impact must be all, high, medium, or low")
+    if bias not in {"all", "bullish", "bearish", "mixed", "unclear"}:
+        raise HTTPException(status_code=400, detail="bias must be all, bullish, bearish, mixed, or unclear")
+    if horizon not in {"all", "intraday", "swing", "regime"}:
+        raise HTTPException(status_code=400, detail="horizon must be all, intraday, swing, or regime")
+    if sort not in {"impact", "newest", "oldest", "source"}:
+        raise HTTPException(status_code=400, detail="sort must be impact, newest, oldest, or source")
 
     service = get_news_service()
     return await service.list_news(
         symbol=symbol.strip().upper() if symbol else None,
         market_bucket=market_bucket,
         impact=impact,
+        bias=bias,
+        horizon=horizon,
+        sort=sort,
         limit=limit,
     )

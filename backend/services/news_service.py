@@ -99,6 +99,34 @@ _DEFAULT_SOURCES = (
         base_impact=66,
     ),
     NewsSource(
+        key="bls_employment",
+        label="BLS Jobs",
+        url="https://www.bls.gov/feed/empsit.rss",
+        market_bucket="macro",
+        base_impact=88,
+    ),
+    NewsSource(
+        key="bls_cpi",
+        label="BLS CPI",
+        url="https://www.bls.gov/feed/cpi.rss",
+        market_bucket="macro",
+        base_impact=90,
+    ),
+    NewsSource(
+        key="ecb_press",
+        label="ECB Press",
+        url="https://www.ecb.europa.eu/rss/press.html",
+        market_bucket="macro",
+        base_impact=78,
+    ),
+    NewsSource(
+        key="ecb_statpress",
+        label="ECB Stats",
+        url="https://www.ecb.europa.eu/rss/statpress.html",
+        market_bucket="macro",
+        base_impact=74,
+    ),
+    NewsSource(
         key="nasdaq_markets",
         label="Nasdaq Markets",
         url="https://www.nasdaq.com/feed/rssoutbound?category=Markets",
@@ -195,6 +223,9 @@ _CATEGORY_KEYWORDS = {
 _CATEGORY_PRIORITY = ("geopolitics", "macro", "regulation", "analyst", "earnings", "company", "security", "crypto")
 _BROAD_FILTERS = {"all", "macro", "stock", "crypto"}
 _CATEGORY_FILTERS = {"geopolitics", "regulation", "analyst", "earnings", "company", "security"}
+_BIAS_FILTERS = {"all", "bullish", "bearish", "mixed", "unclear"}
+_HORIZON_FILTERS = {"all", "intraday", "swing", "regime"}
+_SORT_OPTIONS = {"impact", "newest", "oldest", "source"}
 
 _ALIAS_MAP = {
     "SPY": ("spy", "s&p 500", "s and p 500", "us equities", "u.s. equities"),
@@ -232,11 +263,14 @@ class NewsService:
         symbol: Optional[str] = None,
         market_bucket: str = "all",
         impact: str = "all",
+        bias: str = "all",
+        horizon: str = "all",
+        sort: str = "impact",
         limit: int = 40,
     ) -> dict:
         await self.refresh()
 
-        items = self._cached_items
+        items = list(self._cached_items)
         if symbol:
             needle = symbol.upper()
             items = [item for item in items if needle in item.get("affected_symbols", [])]
@@ -247,10 +281,23 @@ class NewsService:
                 items = [item for item in items if item.get("category") == market_bucket]
         if impact != "all":
             items = [item for item in items if item.get("impact_level") == impact]
+        if bias != "all":
+            items = [item for item in items if item.get("bias") == bias]
+        if horizon != "all":
+            items = [item for item in items if str(item.get("horizon", "")).lower() == horizon]
+        items = self._sort_items(items, sort)
 
         return {
             "news": items[:limit],
-            "brief": self._build_market_brief(items, symbol=symbol, market_bucket=market_bucket, impact=impact),
+            "brief": self._build_market_brief(
+                items,
+                symbol=symbol,
+                market_bucket=market_bucket,
+                impact=impact,
+                bias=bias,
+                horizon=horizon,
+                sort=sort,
+            ),
             "last_refreshed_at": self._last_refreshed_at.isoformat() if self._last_refreshed_at else None,
             "sources": [
                 {
@@ -270,17 +317,26 @@ class NewsService:
         symbol: Optional[str],
         market_bucket: str,
         impact: str,
+        bias: str,
+        horizon: str,
+        sort: str,
     ) -> dict:
         scoped = items[:15]
         context_bits = []
         if market_bucket != "all":
-            context_bits.append(market_bucket.title())
+            context_bits.append(self._scope_label_for_value(market_bucket))
         else:
             context_bits.append("Cross-Market")
         if symbol:
             context_bits.append(symbol)
         if impact != "all":
             context_bits.append(f"{impact.title()} Impact")
+        if bias != "all":
+            context_bits.append(f"{bias.title()} Bias")
+        if horizon != "all":
+            context_bits.append(f"{horizon.title()} Horizon")
+        if sort != "impact":
+            context_bits.append(f"Sorted {sort.title()}")
         scope_label = " | ".join(context_bits)
 
         if not scoped:
@@ -488,6 +544,58 @@ class NewsService:
             reverse=True,
         )
         return items[:120]
+
+    @staticmethod
+    def _sort_items(items: list[dict], sort: str) -> list[dict]:
+        if sort == "newest":
+            return sorted(
+                items,
+                key=lambda item: (
+                    item.get("published_at") or "",
+                    item.get("impact_score", 0),
+                ),
+                reverse=True,
+            )
+        if sort == "oldest":
+            return sorted(
+                items,
+                key=lambda item: (
+                    item.get("published_at") or "",
+                    -int(item.get("impact_score", 0)),
+                ),
+            )
+        if sort == "source":
+            return sorted(
+                items,
+                key=lambda item: (
+                    str(item.get("source_label", "")),
+                    -(item.get("impact_score", 0)),
+                    item.get("published_at") or "",
+                ),
+            )
+        return sorted(
+            items,
+            key=lambda item: (
+                item.get("impact_score", 0),
+                item.get("published_at") or "",
+            ),
+            reverse=True,
+        )
+
+    @staticmethod
+    def _scope_label_for_value(value: str) -> str:
+        labels = {
+            "macro": "Macro",
+            "stock": "Stocks",
+            "crypto": "Crypto",
+            "geopolitics": "War / Risk",
+            "earnings": "Earnings",
+            "analyst": "Analyst",
+            "company": "Company",
+            "regulation": "Regulation",
+            "security": "Security",
+        }
+        return labels.get(value, value.title())
 
     async def _fetch_source(self, client: httpx.AsyncClient, source: NewsSource) -> list[dict]:
         response = await client.get(source.url)

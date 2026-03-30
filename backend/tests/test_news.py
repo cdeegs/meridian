@@ -172,8 +172,68 @@ async def test_news_service_filters_cached_items():
 
 
 @pytest.mark.asyncio
+async def test_news_service_supports_sort_bias_and_horizon_filters():
+    service = NewsService(tracked_symbols=["BTC-USD", "SPY", "AAPL"])
+    service._cached_items = [
+        {
+            "id": "older-bearish",
+            "impact_level": "high",
+            "impact_score": 95,
+            "bias": "bearish",
+            "horizon": "Swing",
+            "market_bucket": "stock",
+            "category": "earnings",
+            "title": "Older bearish item",
+            "source_label": "Nasdaq Earnings",
+            "watch_next": "Watch AAPL.",
+            "affected_symbols": ["AAPL"],
+            "published_at": "2026-03-29T10:00:00+00:00",
+        },
+        {
+            "id": "newer-bearish",
+            "impact_level": "medium",
+            "impact_score": 76,
+            "bias": "bearish",
+            "horizon": "Swing",
+            "market_bucket": "stock",
+            "category": "company",
+            "title": "Newer bearish item",
+            "source_label": "BBC Business",
+            "watch_next": "Watch SPY.",
+            "affected_symbols": ["SPY"],
+            "published_at": "2026-03-30T11:00:00+00:00",
+        },
+        {
+            "id": "macro-bullish",
+            "impact_level": "high",
+            "impact_score": 93,
+            "bias": "bullish",
+            "horizon": "Regime",
+            "market_bucket": "macro",
+            "category": "macro",
+            "title": "Macro bullish item",
+            "source_label": "Federal Reserve",
+            "watch_next": "Watch BTC-USD.",
+            "affected_symbols": ["BTC-USD"],
+            "published_at": "2026-03-30T12:00:00+00:00",
+        },
+    ]
+    service._last_refreshed_at = datetime.now(timezone.utc)
+
+    payload = await service.list_news(bias="bearish", horizon="swing", sort="newest")
+
+    assert [item["id"] for item in payload["news"]] == ["newer-bearish", "older-bearish"]
+    assert payload["brief"]["scope_label"].endswith("Sorted Newest")
+
+
+@pytest.mark.asyncio
 async def test_news_route_validates_filters():
     with pytest.raises(HTTPException) as exc_info:
         await news_routes.list_news(market_bucket="bad")
 
     assert exc_info.value.status_code == 400
+
+    with pytest.raises(HTTPException) as sort_exc:
+        await news_routes.list_news(sort="bad")
+
+    assert sort_exc.value.status_code == 400

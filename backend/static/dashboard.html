@@ -171,30 +171,87 @@
             </select>
           </label>
 
+          <label>
+            Bias
+            <select id="news-bias">
+              <option value="all" selected>All</option>
+              <option value="bullish">Bullish</option>
+              <option value="bearish">Bearish</option>
+              <option value="mixed">Mixed</option>
+              <option value="unclear">Unclear</option>
+            </select>
+          </label>
+
+          <label>
+            Horizon
+            <select id="news-horizon">
+              <option value="all" selected>All</option>
+              <option value="intraday">Intraday</option>
+              <option value="swing">Swing</option>
+              <option value="regime">Regime</option>
+            </select>
+          </label>
+
+          <label>
+            Sort By
+            <select id="news-sort">
+              <option value="impact" selected>Impact</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="source">Source A-Z</option>
+            </select>
+          </label>
+
           <button id="news-refresh" class="button-secondary" type="button">Refresh Feed</button>
         </div>
 
         <div id="news-status" class="note">Loading headline flow...</div>
+        <div id="news-summary-strip" class="news-summary-strip">
+          <div class="empty">News scope, source coverage, and refresh status will appear here once the feed loads.</div>
+        </div>
         <div id="news-tape" class="headline-tape">
           <div class="empty">Headline tape will appear here once news loads.</div>
         </div>
       </div>
 
       <div class="news-workspace">
-        <section class="sheet">
-          <div class="section-head">
-            <div>
-              <h2 class="section-title">Market Conditions</h2>
-              <p class="note">Aggregate desk read for the current filters, with catalysts ranked by impact and follow-through risk.</p>
+        <div class="news-main-stack">
+          <section class="sheet">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">Market Conditions</h2>
+                <p class="note">Aggregate desk read for the current filters, with catalysts ranked by impact and follow-through risk.</p>
+              </div>
+              <span class="pill info">News-driven brief</span>
             </div>
-            <span class="pill info">News-driven brief</span>
-          </div>
-          <div id="news-market-brief" class="brief-shell">
-            <div class="empty">Market conditions will appear once the feed refreshes.</div>
-          </div>
-        </section>
+            <div id="news-market-brief" class="brief-shell">
+              <div class="empty">Market conditions will appear once the feed refreshes.</div>
+            </div>
+          </section>
+
+          <section class="sheet news-feed-shell">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">Headline Feed</h2>
+                <p class="note">Browse the highest-impact items first, then jump straight to the article, source site, or raw feed.</p>
+              </div>
+              <span class="pill neutral">Article + source links</span>
+            </div>
+            <div id="news-feed" class="collection"></div>
+          </section>
+        </div>
 
         <aside class="news-sidebar-stack">
+          <section class="sheet news-detail" id="news-detail">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">Impact Read</h2>
+                <p class="note">Potential directional read, time horizon, and follow-through cues.</p>
+              </div>
+            </div>
+            <div class="empty">Select a headline to inspect its potential impact.</div>
+          </section>
+
           <section class="sheet news-sources">
             <div class="section-head">
               <div>
@@ -206,29 +263,8 @@
               <div class="empty">Source links will appear here once the feed refreshes.</div>
             </div>
           </section>
-
-          <section class="sheet news-detail" id="news-detail">
-            <div class="section-head">
-              <div>
-                <h2 class="section-title">Impact Read</h2>
-                <p class="note">Potential directional read, time horizon, and follow-through cues.</p>
-              </div>
-            </div>
-            <div class="empty">Select a headline to inspect its potential impact.</div>
-          </section>
         </aside>
       </div>
-
-      <section class="sheet">
-        <div class="section-head">
-          <div>
-            <h2 class="section-title">Headline Feed</h2>
-            <p class="note">Most important items first, ranked by impact and recency.</p>
-          </div>
-          <span class="pill neutral">Source-linked</span>
-        </div>
-        <div id="news-feed" class="collection"></div>
-      </section>
     </section>
 
     <section id="tab-charts" class="tab-panel">

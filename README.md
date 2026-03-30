@@ -13,6 +13,7 @@ Meridian is meant to feel closer to a lightweight market terminal:
 - live crypto out of the box through Coinbase
 - optional stock support through Alpaca now, with Schwab scaffolding in place
 - warmed-up multi-timeframe charts instead of cold indicators
+- a live news and catalyst feed with impact scoring
 - plain-English signal interpretation instead of just raw numbers
 - portfolio sleeves, alerting, and Telegram delivery in one workflow
 
@@ -34,9 +35,15 @@ Meridian is meant to feel closer to a lightweight market terminal:
   - adaptive study-profile recommendations
   - timeframe matrix
   - AI-style market overview
+- Market news workflow
+  - official/public headline aggregation
+  - impact scoring, bias, and time-horizon tags
+  - symbol-aware catalyst feed with "why it matters" context
+  - `Meridian Brief` market statement with conditions, top drivers, and watch-next guidance
 - Alerts
   - classic threshold alerts
   - study-profile Telegram alerts that trigger when a selected profile turns constructive
+  - dedicated profile-alert management inside the Alerts tab
 - Portfolio workflows
   - multiple named portfolio profiles
   - per-asset allocation, strategy, and notes
@@ -44,6 +51,7 @@ Meridian is meant to feel closer to a lightweight market terminal:
   - plain HTML/CSS/JS
   - live `/ws/stream` updates
   - terminal-inspired UI
+  - persisted chart workspace state in the browser
 
 ## Product Snapshot
 
@@ -52,8 +60,24 @@ Meridian currently gives you:
 - a live market board
 - a chart workstation with price structure, overlays, indicator studies, and interpretation rail
 - a multi-timeframe signal matrix
+- a catalyst feed that scores headlines by potential market impact
+- a `Meridian Brief` that aggregates the feed into a desk-style market statement
 - a study-profile system that adapts by asset class, timeframe, and chart density
 - Telegram delivery for both classic alerts and profile-based setups
+
+## Product Preview
+
+### Overview
+
+![Meridian overview dashboard](docs/assets/dashboard-overview.png)
+
+### Alerts Workspace
+
+![Meridian alerts workspace](docs/assets/dashboard-alerts.png)
+
+### News Workspace
+
+![Meridian news workspace](docs/assets/dashboard-news.png)
 
 ## Architecture
 
@@ -64,6 +88,7 @@ flowchart LR
     C --> D["Postgres / Timescale"]
     C --> E["Indicator Engine"]
     E --> F["Chart + Insight Routes"]
+    L["News Sources"] --> M["News Service"]
     C --> G["Alert Engine"]
     C --> H["Study Profile Alert Service"]
     G --> I["WebSocket Manager"]
@@ -71,6 +96,7 @@ flowchart LR
     G --> J["Telegram Bot"]
     H --> J
     F --> K["Dashboard"]
+    M --> K
     I --> K
 ```
 
@@ -239,6 +265,7 @@ Meridian can send:
 - `GET /api/candles/{symbol}` - OHLCV candles
 - `GET /api/charts/{symbol}` - chart payload with indicators and insights
 - `GET /api/charts/{symbol}/matrix` - multi-timeframe matrix payload
+- `GET /api/news` - classified market headlines with impact context
 - `GET /api/indicators/{symbol}` - latest indicators
 - `GET /api/indicators/{symbol}/history` - indicator history
 - `GET /api/alerts` - classic alerts
@@ -252,7 +279,7 @@ Meridian can send:
 
 ## Dashboard Walkthrough
 
-The dashboard is organized into four tabs:
+The dashboard is organized into five tabs:
 
 - `Overview`
   - live market board
@@ -264,11 +291,19 @@ The dashboard is organized into four tabs:
   - adaptive study profiles
   - interpretation rail
   - indicator studies
+- `News`
+  - live headline tape
+  - `Meridian Brief` market statement
+  - condition cards and top catalysts
+  - impact, bias, and horizon tags
+  - symbol-aware catalyst cards
+  - "why it matters" and "watch next" context
 - `Portfolios`
   - create named sleeves
   - add assets, allocation, and notes
 - `Alerts`
   - create classic threshold alerts
+  - manage study-profile Telegram alerts in a dedicated alert book
   - review triggered alerts
 
 ## Testing
@@ -286,9 +321,12 @@ What is solid today:
 - live crypto demo path
 - multi-timeframe charting
 - crypto history backfill
+- live market-news feed with catalyst scoring
 - portfolio workflow
 - Telegram alerting
 - adaptive study-profile system
+- dedicated profile-alert manager
+- persisted chart workspace state
 
 What is still in progress:
 

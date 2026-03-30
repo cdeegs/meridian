@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.db.database import engine
@@ -11,6 +13,7 @@ from backend.engine.ingestion import IngestionEngine
 from backend.services.alpaca_market_data import AlpacaMarketDataClient
 from backend.services.alert_engine import AlertEngine
 from backend.services.coinbase_market_data import CoinbaseMarketDataClient
+from backend.services.news_service import NewsService
 from backend.services.study_profile_alerts import StudyProfileAlertService
 from backend.services.schwab_auth import SchwabOAuthClient, SchwabTokenStore
 from backend.services.schwab_market_data import SchwabMarketDataClient
@@ -23,6 +26,7 @@ from backend.routes import (
     charts,
     dashboard as dashboard_routes,
     indicators,
+    news as news_routes,
     portfolios,
     prices,
     schwab as schwab_routes,
@@ -55,6 +59,10 @@ async def lifespan(app: FastAPI):
     coinbase_market_data = None
     schwab_auth = None
     schwab_market_data = None
+    news_service = NewsService(
+        tracked_symbols=settings.all_symbols,
+        refresh_interval_s=settings.news_refresh_interval_s,
+    )
     if settings.telegram_configured:
         notifier = TelegramNotifier(
             bot_token=settings.telegram_bot_token,
@@ -138,6 +146,7 @@ async def lifespan(app: FastAPI):
         logger.info("Schwab credentials not set — auth scaffold inactive")
 
     system_routes.set_ingestion_engine(ingestion)
+    news_routes.set_news_service(news_service)
     prices.set_stock_market_data_client(alpaca_market_data)
     candles.set_stock_market_data_client(alpaca_market_data)
     candles.set_coinbase_market_data_client(coinbase_market_data)
@@ -171,11 +180,17 @@ app.include_router(candles.router)
 app.include_router(charts.router)
 app.include_router(indicators.router)
 app.include_router(alerts_routes.router)
+app.include_router(news_routes.router)
 app.include_router(portfolios.router)
 app.include_router(schwab_routes.router)
 app.include_router(system_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(ws_routes.router)
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).resolve().parent / "static"),
+    name="static",
+)
 
 
 @app.get("/", tags=["root"])
@@ -190,5 +205,6 @@ async def root(request: Request):
         "websocket": websocket_url,
         "dashboard": "/dashboard",
         "portfolios": "/api/portfolios",
+        "news": "/api/news",
         "schwab_status": "/api/schwab/status",
     }

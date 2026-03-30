@@ -2,13 +2,24 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
+from backend.config import settings
 from backend.db.database import get_db
 
 router = APIRouter(prefix="/api", tags=["prices"])
 logger = logging.getLogger(__name__)
 _stock_market_data = None
+SYMBOL_SNAPSHOT_QUERY = text("""
+    SELECT DISTINCT ON (symbol, source)
+        symbol,
+        source,
+        time AS last_tick,
+        price AS last_price
+    FROM ticks
+    WHERE symbol IN :symbols
+    ORDER BY symbol, source, time DESC
+""").bindparams(bindparam("symbols", expanding=True))
 
 
 def set_stock_market_data_client(client) -> None:
@@ -27,47 +38,22 @@ def _is_equity_symbol(symbol: str) -> bool:
 @router.get("/symbols")
 async def list_symbols(db: AsyncSession = Depends(get_db)):
     """List all symbols with data, their source, and time of last tick."""
-    result = await db.execute(text("""
-        WITH latest AS (
-            SELECT DISTINCT ON (symbol, source)
-                symbol,
-                source,
-                time AS last_tick,
-                price AS last_price
-            FROM ticks
-            ORDER BY symbol, source, time DESC
-        ),
-        counts AS (
-            SELECT
-                symbol,
-                source,
-                count(*) AS tick_count
-            FROM ticks
-            GROUP BY symbol, source
-        )
-        SELECT
-            latest.symbol,
-            latest.source,
-            latest.last_tick,
-            counts.tick_count,
-            latest.last_price
-        FROM latest
-        JOIN counts
-          ON counts.symbol = latest.symbol
-         AND counts.source = latest.source
-        ORDER BY latest.symbol
-    """))
-    rows = result.fetchall()
-    merged = {
-        (r.symbol, r.source): {
-            "symbol": r.symbol,
-            "source": r.source,
-            "last_tick": r.last_tick,
-            "tick_count": r.tick_count,
-            "last_price": r.last_price,
+    merged = {}
+    tracked_symbols = list(dict.fromkeys(settings.all_symbols))
+
+    if tracked_symbols:
+        result = await db.execute(SYMBOL_SNAPSHOT_QUERY, {"symbols": tracked_symbols})
+        rows = result.fetchall()
+        merged = {
+            (r.symbol, r.source): {
+                "symbol": r.symbol,
+                "source": r.source,
+                "last_tick": r.last_tick,
+                "tick_count": 0,
+                "last_price": r.last_price,
+            }
+            for r in rows
         }
-        for r in rows
-    }
 
     if _stock_market_data is not None:
         try:

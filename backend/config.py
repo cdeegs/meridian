@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    news_refresh_interval_s: int = 120
     batch_interval_ms: int = 100
     heartbeat_timeout_s: int = 30
 

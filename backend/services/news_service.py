@@ -85,6 +85,20 @@ _DEFAULT_SOURCES = (
         base_impact=64,
     ),
     NewsSource(
+        key="bbc_world",
+        label="BBC World",
+        url="https://feeds.bbci.co.uk/news/world/rss.xml",
+        market_bucket="macro",
+        base_impact=72,
+    ),
+    NewsSource(
+        key="bbc_business",
+        label="BBC Business",
+        url="https://feeds.bbci.co.uk/news/business/rss.xml",
+        market_bucket="stock",
+        base_impact=66,
+    ),
+    NewsSource(
         key="nasdaq_markets",
         label="Nasdaq Markets",
         url="https://www.nasdaq.com/feed/rssoutbound?category=Markets",
@@ -106,6 +120,20 @@ _DEFAULT_SOURCES = (
         base_impact=60,
     ),
     NewsSource(
+        key="nasdaq_stocks",
+        label="Nasdaq Stocks",
+        url="https://www.nasdaq.com/feed/rssoutbound?category=Stocks",
+        market_bucket="stock",
+        base_impact=62,
+    ),
+    NewsSource(
+        key="nasdaq_commodities",
+        label="Nasdaq Commodities",
+        url="https://www.nasdaq.com/feed/rssoutbound?category=Commodities",
+        market_bucket="macro",
+        base_impact=60,
+    ),
+    NewsSource(
         key="nasdaq_crypto",
         label="Nasdaq Crypto",
         url="https://www.nasdaq.com/feed/rssoutbound?category=Cryptocurrencies",
@@ -119,27 +147,54 @@ _POSITIVE_TERMS = {
     "launches", "partner", "partnership", "record", "growth", "gains", "gain",
     "reclaim", "reclaims", "bullish", "inflow", "inflows", "adoption", "strong",
     "upgrade", "upgrades", "outperform", "expands", "expand", "wins",
+    "buy rating", "overweight", "raises target", "price target raised", "raises price target",
 }
 _NEGATIVE_TERMS = {
     "lawsuit", "charges", "charged", "hack", "exploit", "breach", "cuts", "cut",
     "miss", "misses", "downgrade", "downgrades", "outflow", "outflows", "bankruptcy",
     "liquidation", "fraud", "penalty", "penalties", "decline", "falls", "fall",
     "slump", "slumps", "warning", "warns", "weak", "investigation", "probe",
+    "sell rating", "underweight", "underperform", "cuts target", "price target cut", "lowers price target",
 }
 _HIGH_IMPACT_TERMS = {
     "fomc", "fed", "interest rate", "interest rates", "inflation", "cpi", "payrolls",
     "jobs report", "tariff", "treasury", "etf", "earnings", "guidance", "hack",
     "exploit", "lawsuit", "charges", "stablecoin", "listing", "bankruptcy",
+    "war", "missile", "ceasefire", "sanctions", "analyst", "price target",
+}
+_GEOPOLITICS_STRONG_TERMS = {
+    "war", "missile", "airstrike", "troops", "military", "ceasefire", "shipping lane",
+    "red sea", "strait", "oil supply", "drone strike", "invasion",
+}
+_GEOPOLITICS_CONTEXT_TERMS = {
+    "oil", "shipping", "energy", "crude", "tankers", "gaza", "iran", "israel",
+    "ukraine", "russia", "china", "taiwan", "middle east", "strait", "red sea",
+    "navy", "defense",
 }
 _CATEGORY_KEYWORDS = {
+    "geopolitics": {
+        *_GEOPOLITICS_STRONG_TERMS,
+        "sanctions",
+    },
     "macro": {"fed", "fomc", "inflation", "cpi", "pce", "jobs", "payrolls", "treasury", "tariff", "yield", "rate"},
     "regulation": {"sec", "cftc", "regulator", "regulatory", "compliance", "lawsuit", "charges", "enforcement", "policy"},
+    "analyst": {
+        "analyst", "price target", "raises target", "cuts target", "initiates", "reiterates",
+        "upgrade", "downgrade", "overweight", "underweight", "buy rating", "sell rating",
+        "outperform", "underperform",
+    },
     "earnings": {"earnings", "guidance", "revenue", "profit", "quarter", "shareholder letter"},
+    "company": {
+        "ceo", "cfo", "executive", "layoff", "layoffs", "acquisition", "merger",
+        "deal", "buyback", "dividend", "product launch", "partnership", "factory",
+        "antitrust", "recall", "restructuring", "stake sale",
+    },
     "crypto": {"bitcoin", "btc", "ethereum", "eth", "solana", "sol", "stablecoin", "token", "crypto", "exchange", "wallet", "coinbase"},
     "security": {"hack", "exploit", "breach", "stolen", "attack", "drain"},
-    "product": {"launch", "rollout", "partner", "partnership", "listing", "opens"},
 }
-_CATEGORY_PRIORITY = ("macro", "regulation", "earnings", "security", "crypto", "product")
+_CATEGORY_PRIORITY = ("geopolitics", "macro", "regulation", "analyst", "earnings", "company", "security", "crypto")
+_BROAD_FILTERS = {"all", "macro", "stock", "crypto"}
+_CATEGORY_FILTERS = {"geopolitics", "regulation", "analyst", "earnings", "company", "security"}
 
 _ALIAS_MAP = {
     "SPY": ("spy", "s&p 500", "s and p 500", "us equities", "u.s. equities"),
@@ -186,7 +241,10 @@ class NewsService:
             needle = symbol.upper()
             items = [item for item in items if needle in item.get("affected_symbols", [])]
         if market_bucket != "all":
-            items = [item for item in items if item.get("market_bucket") == market_bucket]
+            if market_bucket in _BROAD_FILTERS:
+                items = [item for item in items if item.get("market_bucket") == market_bucket]
+            else:
+                items = [item for item in items if item.get("category") == market_bucket]
         if impact != "all":
             items = [item for item in items if item.get("impact_level") == impact]
 
@@ -556,6 +614,10 @@ class NewsService:
 
     def _detect_category(self, text: str) -> str:
         for category in _CATEGORY_PRIORITY:
+            if category == "geopolitics":
+                if self._is_geopolitics_text(text):
+                    return category
+                continue
             if any(_contains_term(text, keyword) for keyword in _CATEGORY_KEYWORDS[category]):
                 return category
         return "market"
@@ -572,11 +634,13 @@ class NewsService:
 
         if category == "macro":
             return [symbol for symbol in self._tracked_symbols if symbol in {"SPY", "QQQ", "IWM", "DIA", "BTC-USD", "ETH-USD"}]
+        if category == "geopolitics":
+            return [symbol for symbol in self._tracked_symbols if symbol in {"SPY", "QQQ", "DIA", "BTC-USD", "ETH-USD"}]
         if category in {"crypto", "security"}:
             return [symbol for symbol in self._tracked_symbols if symbol in {"BTC-USD", "ETH-USD", "SOL-USD"}]
         if category == "regulation":
             return [symbol for symbol in self._tracked_symbols if symbol in {"BTC-USD", "ETH-USD", "SOL-USD", "SPY", "QQQ"}]
-        if category == "earnings":
+        if category in {"earnings", "analyst", "company"}:
             return [symbol for symbol in self._tracked_symbols if symbol in {"QQQ", "SPY"}]
         return [symbol for symbol in self._tracked_symbols if symbol in {"SPY", "QQQ", "BTC-USD"}]
 
@@ -584,7 +648,7 @@ class NewsService:
     def _resolve_market_bucket(category: str, affected_symbols: list[str], default_bucket: str) -> str:
         has_stock = any("-" not in symbol and "/" not in symbol for symbol in affected_symbols)
         has_crypto = any("-" in symbol or "/" in symbol for symbol in affected_symbols)
-        if category == "macro":
+        if category in {"macro", "geopolitics"}:
             return "macro"
         if has_stock and has_crypto:
             return "macro"
@@ -614,11 +678,11 @@ class NewsService:
 
     @staticmethod
     def _detect_horizon(category: str, text: str) -> str:
-        if category == "macro":
+        if category in {"macro", "geopolitics"}:
             return "Regime"
-        if category in {"earnings", "regulation"}:
+        if category in {"earnings", "regulation", "analyst", "company"}:
             return "Swing"
-        if category in {"security", "product"} or _contains_term(text, "breaking"):
+        if category == "security" or _contains_term(text, "breaking"):
             return "Intraday"
         return "Intraday"
 
@@ -632,12 +696,14 @@ class NewsService:
     ) -> int:
         score = base_impact
         score += sum(4 for keyword in _HIGH_IMPACT_TERMS if _contains_term(text, keyword))
-        if category == "macro":
+        if category in {"macro", "geopolitics"}:
             score += 10
         elif category in {"regulation", "security"}:
             score += 8
-        elif category == "earnings":
+        elif category in {"earnings", "analyst"}:
             score += 6
+        elif category == "company":
+            score += 4
         if len(affected_symbols) >= 4:
             score += 4
 
@@ -672,10 +738,25 @@ class NewsService:
                 "Could reprice rate expectations and broad risk appetite across indexes and crypto.",
                 f"Watch {symbol_line}, treasury yields, and whether the move sticks beyond the first reaction.",
             )
+        if category == "geopolitics":
+            return (
+                "War, sanctions, or shipping headlines can hit oil, rates, defense, and broad risk appetite all at once.",
+                f"Watch {symbol_line}, energy-sensitive names, and whether the move spills into the broader tape.",
+            )
         if category == "regulation":
             return (
                 "Could change policy or enforcement expectations, which usually matters more than a single headline candle.",
                 f"Watch {symbol_line} for follow-through once the market digests the legal or policy angle.",
+            )
+        if category == "analyst":
+            return (
+                "Analyst actions can move individual names quickly, especially when a rating change lines up with existing price structure.",
+                f"Watch {symbol_line} for acceptance beyond the first gap or price-target headline reaction.",
+            )
+        if category == "company":
+            return (
+                "Company-specific events can reset the near-term narrative even when the broader market is quiet.",
+                f"Watch {symbol_line} for whether the update changes leadership, guidance expectations, or sector sympathy.",
             )
         if category == "security":
             return (
@@ -951,14 +1032,20 @@ class NewsService:
         text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
         category = item.get("category")
         market_bucket = item.get("market_bucket")
+        if category == "geopolitics" or NewsService._is_geopolitics_text(text):
+            return "War / Geopolitics"
         if any(_contains_term(text, keyword) for keyword in {"fed", "fomc", "rate", "inflation", "cpi", "pce", "yield"}):
             return "Fed / Rates"
         if any(_contains_term(text, keyword) for keyword in {"jobs", "payrolls", "tariff", "treasury"}):
             return "Macro / Economic Data"
         if any(_contains_term(text, keyword) for keyword in {"sec", "cftc", "enforcement", "lawsuit", "charges", "rule"}):
             return "Regulation / Enforcement"
+        if category == "analyst" or any(_contains_term(text, keyword) for keyword in {"analyst", "price target", "upgrade", "downgrade", "overweight", "underweight"}):
+            return "Analyst Actions"
         if any(_contains_term(text, keyword) for keyword in {"earnings", "guidance", "revenue", "profit"}):
             return "Earnings / Guidance"
+        if category == "company" or any(_contains_term(text, keyword) for keyword in {"ceo", "cfo", "acquisition", "merger", "layoff", "buyback", "recall"}):
+            return "Company Events"
         if any(_contains_term(text, keyword) for keyword in {"etf", "inflow", "outflow"}):
             return "ETF / Fund Flows"
         if category == "security" or any(_contains_term(text, keyword) for keyword in {"hack", "exploit", "breach"}):
@@ -970,6 +1057,14 @@ class NewsService:
         if market_bucket == "crypto":
             return "Crypto Market Commentary"
         return "Broad Market Commentary"
+
+    @staticmethod
+    def _is_geopolitics_text(text: str) -> bool:
+        if any(_contains_term(text, keyword) for keyword in _GEOPOLITICS_STRONG_TERMS):
+            return True
+        if _contains_term(text, "sanctions") and any(_contains_term(text, keyword) for keyword in _GEOPOLITICS_CONTEXT_TERMS):
+            return True
+        return False
 
     @staticmethod
     def _what_changed(

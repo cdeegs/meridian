@@ -23,12 +23,18 @@ def get_news_service() -> NewsService:
 @router.get("/news")
 async def list_news(
     symbol: Optional[str] = Query(default=None),
-    market_bucket: str = Query(default="all", description="all | macro | stock | crypto"),
+    market_bucket: str = Query(
+        default="all",
+        description="all | macro | stock | crypto | geopolitics | earnings | analyst | company | regulation | security",
+    ),
     impact: str = Query(default="all", description="all | high | medium | low"),
     limit: int = Query(default=40, ge=1, le=100),
 ):
-    if market_bucket not in {"all", "macro", "stock", "crypto"}:
-        raise HTTPException(status_code=400, detail="market_bucket must be all, macro, stock, or crypto")
+    if market_bucket not in {"all", "macro", "stock", "crypto", "geopolitics", "earnings", "analyst", "company", "regulation", "security"}:
+        raise HTTPException(
+            status_code=400,
+            detail="market_bucket must be all, macro, stock, crypto, geopolitics, earnings, analyst, company, regulation, or security",
+        )
     if impact not in {"all", "high", "medium", "low"}:
         raise HTTPException(status_code=400, detail="impact must be all, high, medium, or low")
 

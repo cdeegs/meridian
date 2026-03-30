@@ -632,6 +632,22 @@ function toneFromBias(bias) {
   return "neutral";
 }
 
+function newsFacetLabel(value) {
+  const labels = {
+    all: "All Flow",
+    macro: "Macro",
+    geopolitics: "War / Risk",
+    earnings: "Earnings",
+    analyst: "Analyst",
+    company: "Company",
+    regulation: "Regulation",
+    security: "Security",
+    stock: "Stocks",
+    crypto: "Crypto",
+  };
+  return labels[value] || String(value || "").replace(/_/g, " ");
+}
+
 function selectedNewsItem() {
   return state.news.items.find((item) => item.id === state.news.selectedId) || state.news.items[0] || null;
 }
@@ -698,7 +714,7 @@ function renderMarketBrief(container, options = {}) {
               <div class="card-head">
                 <div>
                   <p class="guide-title">${escapeHtml(driver.title)}</p>
-                  <p class="meta">${escapeHtml(driver.source_label)} | ${escapeHtml(driver.market_bucket)}</p>
+                  <p class="meta">${escapeHtml(driver.source_label)} | ${escapeHtml(newsFacetLabel(driver.market_bucket))}</p>
                 </div>
                 <div class="news-pill-stack">
                   <span class="pill ${driver.impact_level === "high" ? "caution" : driver.impact_level === "medium" ? "info" : "neutral"}">${escapeHtml(driver.impact_level)}</span>
@@ -728,14 +744,14 @@ function renderMarketBrief(container, options = {}) {
             ${(brief.narratives || []).slice(0, narrativeLimit).map((narrative) => `
               <button class="brief-driver" type="button" data-news-open="${escapeHtml(narrative.id)}">
                 <div class="card-head">
-                  <div>
-                    <p class="guide-title">${escapeHtml(narrative.label)}</p>
-                    <p class="meta">${escapeHtml(`${narrative.count} headline${narrative.count === 1 ? "" : "s"} | ${narrative.market_bucket}`)}</p>
-                  </div>
-                  <div class="news-pill-stack">
-                    <span class="pill ${toneClass(narrative.tone)}">${escapeHtml(narrative.tone)}</span>
-                    <span class="pill ${narrative.impact_level === "high" ? "caution" : narrative.impact_level === "medium" ? "info" : "neutral"}">${escapeHtml(narrative.impact_level)}</span>
-                  </div>
+                <div>
+                  <p class="guide-title">${escapeHtml(narrative.label)}</p>
+                  <p class="meta">${escapeHtml(`${narrative.count} headline${narrative.count === 1 ? "" : "s"} | ${newsFacetLabel(narrative.market_bucket)}`)}</p>
+                </div>
+                <div class="news-pill-stack">
+                  <span class="pill ${toneClass(narrative.tone)}">${escapeHtml(narrative.tone)}</span>
+                  <span class="pill ${narrative.impact_level === "high" ? "caution" : narrative.impact_level === "medium" ? "info" : "neutral"}">${escapeHtml(narrative.impact_level)}</span>
+                </div>
                 </div>
                 <p class="muted">${escapeHtml(narrative.detail)}</p>
               </button>
@@ -782,7 +798,7 @@ function renderNewsSources() {
           <p class="guide-title">${escapeHtml(source.label)}</p>
           <p class="meta">${escapeHtml(source.domain)}</p>
         </div>
-        <span class="pill neutral">${escapeHtml(source.market_bucket)}</span>
+        <span class="pill neutral">${escapeHtml(newsFacetLabel(source.market_bucket))}</span>
       </div>
       <p class="muted">Open the live feed powering Meridian's news engine.</p>
     </a>
@@ -841,6 +857,7 @@ function renderNewsFeed() {
         <div class="news-pill-stack">
           <span class="pill ${item.impact_level === "high" ? "caution" : item.impact_level === "medium" ? "info" : "neutral"}">${escapeHtml(item.impact_level)} impact</span>
           <span class="pill ${toneClass(toneFromBias(item.bias))}">${escapeHtml(item.bias)}</span>
+          <span class="pill neutral">${escapeHtml(newsFacetLabel(item.category))}</span>
         </div>
       </div>
       <p class="muted">${escapeHtml(item.summary || item.why_it_matters)}</p>
@@ -894,6 +911,10 @@ function renderNewsDetail() {
 
       <div class="overview-grid">
         <div class="overview-line">
+          <p class="overview-kicker">Category</p>
+          <p class="overview-value">${escapeHtml(newsFacetLabel(item.category))}</p>
+        </div>
+        <div class="overview-line">
           <p class="overview-kicker">Bias</p>
           <p class="overview-value">${escapeHtml(item.bias)}</p>
         </div>
@@ -902,8 +923,8 @@ function renderNewsDetail() {
           <p class="overview-value">${escapeHtml(item.horizon)}</p>
         </div>
         <div class="overview-line">
-          <p class="overview-kicker">Bucket</p>
-          <p class="overview-value">${escapeHtml(item.market_bucket)}</p>
+          <p class="overview-kicker">Market</p>
+          <p class="overview-value">${escapeHtml(newsFacetLabel(item.market_bucket))}</p>
         </div>
       </div>
 

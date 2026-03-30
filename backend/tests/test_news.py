@@ -58,6 +58,77 @@ def test_news_service_tags_crypto_security_story():
     assert item["horizon"] == "Intraday"
 
 
+def test_news_service_classifies_geopolitics_story():
+    service = NewsService(tracked_symbols=["SPY", "QQQ", "BTC-USD"])
+    item = service._enrich_item(
+        NewsSource(
+            key="bbc_world",
+            label="BBC World",
+            url="https://feeds.bbci.co.uk/news/world/rss.xml",
+            market_bucket="macro",
+            base_impact=72,
+        ),
+        {
+            "title": "Oil jumps after missile strikes raise fears of wider war and sanctions",
+            "summary": "Markets are watching shipping lanes and energy supply after the latest escalation.",
+            "url": "https://example.com/war-risk",
+            "published_at": "Mon, 30 Mar 2026 14:00:00 GMT",
+        },
+    )
+
+    assert item["category"] == "geopolitics"
+    assert item["market_bucket"] == "macro"
+    assert item["impact_level"] in {"high", "medium"}
+    assert "SPY" in item["affected_symbols"]
+
+
+def test_news_service_classifies_analyst_story():
+    service = NewsService(tracked_symbols=["AAPL", "SPY", "QQQ"])
+    item = service._enrich_item(
+        NewsSource(
+            key="nasdaq_stocks",
+            label="Nasdaq Stocks",
+            url="https://www.nasdaq.com/feed/rssoutbound?category=Stocks",
+            market_bucket="stock",
+            base_impact=62,
+        ),
+        {
+            "title": "Apple shares rise after analyst upgrade and higher price target",
+            "summary": "The analyst cited stronger iPhone demand and raised the firm's target on AAPL.",
+            "url": "https://example.com/aapl-analyst",
+            "published_at": "Mon, 30 Mar 2026 13:00:00 GMT",
+        },
+    )
+
+    assert item["category"] == "analyst"
+    assert item["market_bucket"] == "stock"
+    assert "AAPL" in item["affected_symbols"]
+    assert item["horizon"] == "Swing"
+
+
+def test_news_service_does_not_misclassify_regulatory_sanctions_as_geopolitics():
+    service = NewsService(tracked_symbols=["SPY", "QQQ", "BTC-USD"])
+    item = service._enrich_item(
+        NewsSource(
+            key="cftc_enforcement",
+            label="CFTC Enforcement",
+            url="https://www.cftc.gov/RSS/RSSENF/rssenf.xml",
+            market_bucket="macro",
+            base_impact=78,
+        ),
+        {
+            "title": "CFTC obtains sanctions and restitution in California precious metals fraud case",
+            "summary": "Regulators said the court ordered restitution and civil penalties after enforcement action.",
+            "url": "https://example.com/cftc-sanctions",
+            "published_at": "Mon, 30 Mar 2026 12:00:00 GMT",
+        },
+    )
+
+    assert item["category"] == "regulation"
+    assert item["market_bucket"] == "macro"
+    assert item["horizon"] == "Swing"
+
+
 @pytest.mark.asyncio
 async def test_news_service_filters_cached_items():
     service = NewsService(tracked_symbols=["BTC-USD", "SPY"])

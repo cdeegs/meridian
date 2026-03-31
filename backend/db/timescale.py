@@ -140,6 +140,13 @@ _TIMESCALE_STMTS = [
         if_not_exists    => TRUE
     )
     """,
+    """
+    SELECT add_retention_policy(
+        'ticks',
+        INTERVAL '30 days',
+        if_not_exists => TRUE
+    )
+    """,
 ]
 
 

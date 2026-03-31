@@ -175,7 +175,6 @@ This is the most useful baseline `.env` shape for local development:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://YOUR_LOCAL_USERNAME@localhost:5432/meridian
-REDIS_URL=redis://localhost:6379/0
 
 ALPACA_API_KEY=
 ALPACA_API_SECRET=

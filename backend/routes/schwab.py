@@ -13,9 +13,27 @@ def set_schwab_services(auth_client, market_data_client) -> None:
     _market_data_client = market_data_client
 
 
+def _pending_status() -> dict:
+    return {
+        "provider": "schwab",
+        "auth": {
+            "implementation": "pending",
+            "configured": False,
+        },
+        "market_data": {
+            "implementation": "pending",
+            "configured": False,
+        },
+    }
+
+
+def _pending_error() -> HTTPException:
+    return HTTPException(status_code=501, detail="Schwab integration is not yet implemented")
+
+
 def _require_auth_client():
     if _auth_client is None:
-        raise HTTPException(status_code=503, detail="Schwab auth is not configured")
+        raise _pending_error()
     if not _auth_client.configured:
         raise HTTPException(status_code=503, detail="Schwab credentials are missing")
     return _auth_client
@@ -23,11 +41,14 @@ def _require_auth_client():
 
 @router.get("/api/schwab/status")
 async def schwab_status():
-    auth_status = _auth_client.get_status() if _auth_client is not None else {"configured": False}
+    if _auth_client is None and _market_data_client is None:
+        return _pending_status()
+
+    auth_status = _auth_client.get_status() if _auth_client is not None else {"configured": False, "implementation": "pending"}
     market_data_status = (
         _market_data_client.get_status()
         if _market_data_client is not None
-        else {"configured": False, "implementation": "not_initialized"}
+        else {"configured": False, "implementation": "pending"}
     )
     return {
         "provider": "schwab",
@@ -44,6 +65,12 @@ async def schwab_auth_url():
 
 @router.get("/api/schwab/auth/start", include_in_schema=False)
 async def schwab_auth_start():
+    if _auth_client is None:
+        return HTMLResponse(
+            "<h1>Schwab integration pending</h1><p>Authorization is not yet implemented in Meridian.</p>",
+            status_code=501,
+        )
+
     auth_client = _require_auth_client()
     payload = auth_client.create_authorization()
     return RedirectResponse(payload["authorize_url"])
@@ -56,6 +83,12 @@ async def schwab_callback(
     error: str | None = Query(default=None),
     error_description: str | None = Query(default=None),
 ):
+    if _auth_client is None:
+        return HTMLResponse(
+            "<h1>Schwab integration pending</h1><p>The callback flow is not yet implemented in Meridian.</p>",
+            status_code=501,
+        )
+
     if error:
         message = error_description or error
         return HTMLResponse(

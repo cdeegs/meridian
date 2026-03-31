@@ -284,6 +284,9 @@ class AlertEngine:
         current_indicators: Dict[str, dict],
         previous_indicators: Dict[str, dict],
     ) -> Optional[dict]:
+        if alert.status != "active":
+            return None
+
         condition = alert.condition
 
         if condition == "price_above" and price_event and alert.threshold is not None:

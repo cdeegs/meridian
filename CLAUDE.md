@@ -6,12 +6,12 @@ Real-time market data pipeline: WebSocket ingestion → TimescaleDB → FastAPI.
 ## Stack
 - FastAPI (async) + uvicorn
 - TimescaleDB (Postgres extension) via asyncpg + SQLAlchemy 2.0
-- Redis for pub/sub (Phase 2+)
-- NumPy/Pandas for indicator math
+- httpx for async HTTP (news RSS, Telegram)
+- NumPy/Pandas for indicator math and chart intelligence
 
 ## Running locally
 ```bash
-# Start DB + Redis
+# Start DB
 docker compose up -d
 
 # Install deps
@@ -34,9 +34,11 @@ uvicorn backend.main:app --reload
 
 ## Phase status
 - [x] Phase 1: Ingestion + TimescaleDB + REST API
-- [ ] Phase 2: Indicator engine + WebSocket streaming
-- [ ] Phase 3: Alerts + Coinbase adapter
+- [x] Phase 2: Indicator engine + WebSocket streaming
+- [x] Phase 3: Alerts + Coinbase adapter + chart intelligence + news service + portfolios
 - [ ] Phase 4: Backtest engine
+- [ ] Phase 5: Redis pub/sub fan-out + horizontal scaling
+- [ ] Phase 6: Schwab / additional exchange adapters
 
 ## Adding a new exchange adapter
 1. Create `backend/adapters/<exchange>.py`

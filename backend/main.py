@@ -15,8 +15,6 @@ from backend.services.alert_engine import AlertEngine
 from backend.services.coinbase_market_data import CoinbaseMarketDataClient
 from backend.services.news_service import NewsService
 from backend.services.study_profile_alerts import StudyProfileAlertService
-from backend.services.schwab_auth import SchwabOAuthClient, SchwabTokenStore
-from backend.services.schwab_market_data import SchwabMarketDataClient
 from backend.services.telegram_notifier import TelegramNotifier
 from backend.services.warmup import warm_up
 from backend.websocket.manager import ConnectionManager, set_manager
@@ -57,8 +55,6 @@ async def lifespan(app: FastAPI):
     notifier = None
     alpaca_market_data = None
     coinbase_market_data = None
-    schwab_auth = None
-    schwab_market_data = None
     news_service = NewsService(
         tracked_symbols=settings.all_symbols,
         refresh_interval_s=settings.news_refresh_interval_s,
@@ -125,26 +121,6 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Coinbase adapter disabled")
 
-    if settings.schwab_configured:
-        token_store = SchwabTokenStore(settings.schwab_token_path)
-        schwab_auth = SchwabOAuthClient(
-            client_id=settings.schwab_client_id,
-            client_secret=settings.schwab_client_secret,
-            redirect_uri=settings.schwab_redirect_uri,
-            authorize_url=settings.schwab_authorize_url,
-            token_url=settings.schwab_token_url,
-            token_store=token_store,
-            scope=settings.schwab_scope,
-        )
-        schwab_market_data = SchwabMarketDataClient(
-            auth_client=schwab_auth,
-            base_url=settings.schwab_market_data_base_url,
-            stock_symbols=settings.default_symbols,
-        )
-        logger.info("Schwab auth scaffold configured")
-    else:
-        logger.info("Schwab credentials not set — auth scaffold inactive")
-
     system_routes.set_ingestion_engine(ingestion)
     news_routes.set_news_service(news_service)
     prices.set_stock_market_data_client(alpaca_market_data)
@@ -152,7 +128,6 @@ async def lifespan(app: FastAPI):
     candles.set_coinbase_market_data_client(coinbase_market_data)
     charts.set_stock_market_data_client(alpaca_market_data)
     charts.set_coinbase_market_data_client(coinbase_market_data)
-    schwab_routes.set_schwab_services(schwab_auth, schwab_market_data)
 
     # 6. Warm up indicator windows from historical data before going live
     logger.info("Warming up indicator windows from DB history...")
@@ -206,5 +181,4 @@ async def root(request: Request):
         "dashboard": "/dashboard",
         "portfolios": "/api/portfolios",
         "news": "/api/news",
-        "schwab_status": "/api/schwab/status",
     }

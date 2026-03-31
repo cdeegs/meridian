@@ -27,12 +27,13 @@ async def health():
         logger.warning("DB health check failed: %s", e)
 
     feeds = _ingestion_engine.get_feed_status() if _ingestion_engine else {}
-    feeds_ok = all(s.get("connected") for s in feeds.values()) if feeds else False
+    all_feeds_ok = all(f.get("connected") for f in feeds.values()) if feeds else False
 
     return {
         "status": "ok" if db_ok else "degraded",
+        "feeds_status": "ok" if all_feeds_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
-        "feeds_ok": feeds_ok,
+        "feeds_ok": all_feeds_ok,
         "feeds": feeds,
     }
 

@@ -207,7 +207,7 @@ class AlertEngine:
         params = {
             "id": alert_id,
             "status": status,
-            "triggered_at": None if status == "active" else None,
+            "triggered_at": None if status == "active" else now,
         }
 
         async with self._db_engine.begin() as conn:

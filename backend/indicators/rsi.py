@@ -25,6 +25,9 @@ class RSI(BaseIndicator):
         self._prev_price: Optional[float] = None
         self._avg_gain: Optional[float] = None
         self._avg_loss: Optional[float] = None
+        self._seed_gains: list[float] = []
+        self._seed_losses: list[float] = []
+        self._initialized: bool = False
         self._count = 0
 
     def update(self, price: float, **kwargs) -> Optional[float]:
@@ -39,11 +42,8 @@ class RSI(BaseIndicator):
         gain = max(change, 0.0)
         loss = abs(min(change, 0.0))
 
-        if self._avg_gain is None:
+        if not self._initialized:
             # Accumulate initial values for the first SMA seed
-            if not hasattr(self, "_seed_gains"):
-                self._seed_gains = []
-                self._seed_losses = []
             self._seed_gains.append(gain)
             self._seed_losses.append(loss)
 
@@ -53,6 +53,7 @@ class RSI(BaseIndicator):
             # Seed with simple average of first `period` changes
             self._avg_gain = sum(self._seed_gains) / self._period
             self._avg_loss = sum(self._seed_losses) / self._period
+            self._initialized = True
         else:
             # Wilder's smoothed average
             self._avg_gain = (self._avg_gain * (self._period - 1) + gain) / self._period

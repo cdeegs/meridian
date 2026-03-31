@@ -198,6 +198,7 @@ async def add_portfolio_asset(
 ):
     await _get_portfolio_or_404(db, portfolio_id)
     asset_id = str(uuid4())
+    now = datetime.now(timezone.utc)
 
     await db.execute(
         text("""
@@ -216,12 +217,12 @@ async def add_portfolio_asset(
             "allocation_pct": payload.allocation_pct,
             "strategy": payload.strategy,
             "notes": payload.notes,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": now,
         },
     )
     await db.execute(
         text("UPDATE portfolios SET updated_at = :updated_at WHERE id = :id"),
-        {"updated_at": datetime.now(timezone.utc), "id": portfolio_id},
+        {"updated_at": now, "id": portfolio_id},
     )
     await db.commit()
 
@@ -345,11 +346,34 @@ async def _load_portfolios(db: AsyncSession) -> list[dict]:
 
 
 async def _get_portfolio_or_404(db: AsyncSession, portfolio_id: str) -> dict:
-    portfolios = await _load_portfolios(db)
-    for portfolio in portfolios:
-        if portfolio["id"] == portfolio_id:
-            return portfolio
-    raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    result = await db.execute(
+        text("""
+            SELECT id, name, strategy, notes, created_at, updated_at
+            FROM portfolios
+            WHERE id = :id
+        """),
+        {"id": portfolio_id},
+    )
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    assets_result = await db.execute(
+        text("""
+            SELECT id, portfolio_id, symbol, asset_type, allocation_pct, strategy, notes, created_at
+            FROM portfolio_assets
+            WHERE portfolio_id = :id
+            ORDER BY created_at ASC
+        """),
+        {"id": portfolio_id},
+    )
+    assets = [dict(asset) for asset in assets_result.mappings().all()]
+    return {
+        **dict(row),
+        "asset_count": len(assets),
+        "allocation_pct": round(sum((asset.get("allocation_pct") or 0.0) for asset in assets), 2),
+        "assets": assets,
+    }
 
 
 async def _get_portfolio_asset_or_404(db: AsyncSession, portfolio_id: str, asset_id: str) -> dict:

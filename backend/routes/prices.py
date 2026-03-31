@@ -6,6 +6,7 @@ from sqlalchemy import bindparam, text
 
 from backend.config import settings
 from backend.db.database import get_db
+from backend.utils.symbols import is_equity_symbol as _is_equity_symbol
 
 router = APIRouter(prefix="/api", tags=["prices"])
 logger = logging.getLogger(__name__)
@@ -29,10 +30,6 @@ def set_stock_market_data_client(client) -> None:
 
 def set_alpaca_market_data_client(client) -> None:
     set_stock_market_data_client(client)
-
-
-def _is_equity_symbol(symbol: str) -> bool:
-    return "-" not in symbol and "/" not in symbol
 
 
 @router.get("/symbols")

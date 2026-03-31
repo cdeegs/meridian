@@ -16,74 +16,12 @@ from backend.services.chart_intelligence import (
     _compute_indicator_series,
     _profile_sample_backtest,
 )
+from backend.utils.symbols import TIMEFRAME_SPECS as _TIMEFRAME_SPECS, asset_class as _asset_class, is_equity_symbol as _is_equity_symbol
 
 router = APIRouter(prefix="/api", tags=["charts"])
 logger = logging.getLogger(__name__)
 _stock_market_data = None
 _crypto_market_data = None
-
-_TIMEFRAME_SPECS = {
-    "1m": {
-        "bucket_width": timedelta(minutes=1),
-        "window": timedelta(hours=6),
-        "warmup_candles": 120,
-    },
-    "5m": {
-        "bucket_width": timedelta(minutes=5),
-        "window": timedelta(hours=24),
-        "warmup_candles": 120,
-    },
-    "15m": {
-        "bucket_width": timedelta(minutes=15),
-        "window": timedelta(days=3),
-        "warmup_candles": 120,
-    },
-    "30m": {
-        "bucket_width": timedelta(minutes=30),
-        "window": timedelta(days=5),
-        "warmup_candles": 120,
-    },
-    "1h": {
-        "bucket_width": timedelta(hours=1),
-        "window": timedelta(days=14),
-        "warmup_candles": 120,
-    },
-    "2h": {
-        "bucket_width": timedelta(hours=2),
-        "window": timedelta(days=21),
-        "warmup_candles": 120,
-    },
-    "4h": {
-        "bucket_width": timedelta(hours=4),
-        "window": timedelta(days=60),
-        "warmup_candles": 120,
-    },
-    "6h": {
-        "bucket_width": timedelta(hours=6),
-        "window": timedelta(days=90),
-        "warmup_candles": 140,
-    },
-    "12h": {
-        "bucket_width": timedelta(hours=12),
-        "window": timedelta(days=180),
-        "warmup_candles": 160,
-    },
-    "1d": {
-        "bucket_width": timedelta(days=1),
-        "window": timedelta(days=365),
-        "warmup_candles": 200,
-    },
-    "2d": {
-        "bucket_width": timedelta(days=2),
-        "window": timedelta(days=730),
-        "warmup_candles": 220,
-    },
-    "1w": {
-        "bucket_width": timedelta(days=7),
-        "window": timedelta(days=1825),
-        "warmup_candles": 260,
-    },
-}
 
 _DEFAULT_MATRIX_TIMEFRAMES = ("15m", "1h", "4h", "1d", "2d", "1w")
 
@@ -104,14 +42,6 @@ def set_crypto_market_data_client(client) -> None:
 
 def set_coinbase_market_data_client(client) -> None:
     set_crypto_market_data_client(client)
-
-
-def _is_equity_symbol(symbol: str) -> bool:
-    return "-" not in symbol and "/" not in symbol
-
-
-def _asset_class(symbol: str) -> str:
-    return "stock" if _is_equity_symbol(symbol) else "crypto"
 
 
 @router.get("/charts/{symbol}")
@@ -448,4 +378,3 @@ def _parse_timeframes(value: str) -> list[str]:
     if not parsed:
         return list(_DEFAULT_MATRIX_TIMEFRAMES)
     return parsed
-

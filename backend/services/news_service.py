@@ -604,7 +604,11 @@ class NewsService:
         return [self._enrich_item(source, item) for item in parsed]
 
     def _parse_feed(self, source: NewsSource, xml_text: str) -> list[dict]:
-        root = ET.fromstring(xml_text)
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            logger.warning("Failed to parse RSS XML from source: %s", exc)
+            return []
         items: list[dict] = []
 
         if root.tag.endswith("feed"):

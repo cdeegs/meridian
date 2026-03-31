@@ -90,11 +90,16 @@ const VALID_TABS = new Set(["overview", "charts", "news", "alerts", "portfolios"
 const VALID_TIMEFRAMES = new Set(Object.keys(TIMEFRAME_MINUTES));
 const VALID_WINDOW_PRESETS = new Set(Object.keys(CHART_WINDOW_PRESETS));
 const VALID_PROFILE_KEYS = new Set(Object.keys(PROFILE_TITLES));
+const VALID_MARKET_FILTERS = new Set(["all", "stock", "stocks", "crypto"]);
 const VALID_NEWS_FILTERS = new Set(["all", "macro", "geopolitics", "earnings", "analyst", "company", "stock", "crypto"]);
 const VALID_NEWS_IMPACTS = new Set(["all", "high", "medium", "low"]);
 const VALID_NEWS_BIASES = new Set(["all", "bullish", "bearish", "mixed", "unclear"]);
 const VALID_NEWS_HORIZONS = new Set(["all", "intraday", "swing", "regime"]);
 const VALID_NEWS_SORTS = new Set(["impact", "newest", "oldest", "source"]);
+let _wsReconnectDelay = 2000;
+const _WS_MAX_DELAY = 30000;
+const _WS_MAX_ATTEMPTS = 20;
+let _wsAttempts = 0;
 
 const state = {
   activeTab: "overview",
@@ -158,7 +163,6 @@ const marketGrid = document.getElementById("market-grid");
 const overviewMarketBrief = document.getElementById("overview-market-brief");
 const overviewNewsTape = document.getElementById("overview-news-tape");
 const alertBook = document.getElementById("alert-book");
-const triggerFeed = document.getElementById("trigger-feed");
 const overviewTriggerFeed = document.getElementById("overview-trigger-feed");
 const symbolOptions = document.getElementById("symbol-options");
 const chartSymbol = document.getElementById("chart-symbol");
@@ -195,14 +199,15 @@ const newsLastUpdated = document.getElementById("news-last-updated");
 const newsSummaryStrip = document.getElementById("news-summary-strip");
 const portfolioForm = document.getElementById("portfolio-form");
 
-async function fetchWithTimeout(url, options = {}) {
-  const { timeoutMs = 4000, ...fetchOptions } = options;
-  if (typeof AbortController === "undefined" || !timeoutMs) {
+async function fetchWithTimeout(url, options = {}, timeout = 12000) {
+  const { timeoutMs, ...fetchOptions } = options;
+  const effectiveTimeout = timeoutMs ?? timeout;
+  if (typeof AbortController === "undefined" || !effectiveTimeout) {
     return fetch(url, fetchOptions);
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = window.setTimeout(() => controller.abort(), effectiveTimeout);
   try {
     return await fetch(url, { ...fetchOptions, signal: controller.signal });
   } finally {
@@ -248,8 +253,8 @@ function hydrateWorkspaceState() {
   if (typeof stored.activeTab === "string" && VALID_TABS.has(stored.activeTab)) {
     state.activeTab = stored.activeTab;
   }
-  if (typeof stored.marketFilter === "string") {
-    state.marketFilter = stored.marketFilter;
+  if (stored.marketFilter && VALID_MARKET_FILTERS.has(stored.marketFilter)) {
+    state.marketFilter = stored.marketFilter === "stocks" ? "stock" : stored.marketFilter;
   }
   if (typeof stored.newsMarketFilter === "string" && VALID_NEWS_FILTERS.has(stored.newsMarketFilter)) {
     state.news.marketFilter = stored.newsMarketFilter;
@@ -1753,7 +1758,7 @@ async function loadChartData() {
       params.set("start", range.start.toISOString());
       params.set("end", range.end.toISOString());
     }
-    const response = await fetch(`/api/charts/${encodeURIComponent(symbol)}?${params.toString()}`);
+    const response = await fetchWithTimeout(`/api/charts/${encodeURIComponent(symbol)}?${params.toString()}`, {}, 15000);
     if (!response.ok) {
       let detail = `Chart data unavailable (${response.status})`;
       try {
@@ -2274,8 +2279,11 @@ function renderTriggerFeed() {
         </article>
       `).join("");
 
-  triggerFeed.innerHTML = markup;
   overviewTriggerFeed.innerHTML = markup;
+  const alertsTriggerFeed = document.getElementById("trigger-feed");
+  if (alertsTriggerFeed) {
+    alertsTriggerFeed.innerHTML = markup;
+  }
 }
 
 async function refreshAlerts() {
@@ -3057,6 +3065,8 @@ function connectSocket() {
   state.ws = ws;
 
   ws.addEventListener("open", () => {
+    _wsReconnectDelay = 2000;
+    _wsAttempts = 0;
     setConnection("live", "Live stream connected");
     ws.send(JSON.stringify({ action: "subscribe", symbols: ["*"] }));
   });
@@ -3082,12 +3092,22 @@ function connectSocket() {
 
   ws.addEventListener("close", () => {
     setConnection("dead", "Stream reconnecting...");
-    state.reconnectTimer = setTimeout(connectSocket, 2500);
+    scheduleReconnect();
   });
 
   ws.addEventListener("error", () => {
     ws.close();
   });
+}
+
+function scheduleReconnect() {
+  if (_wsAttempts >= _WS_MAX_ATTEMPTS) {
+    console.warn("WebSocket: max reconnect attempts reached, giving up");
+    return;
+  }
+  _wsAttempts++;
+  state.reconnectTimer = setTimeout(connectSocket, _wsReconnectDelay);
+  _wsReconnectDelay = Math.min(_wsReconnectDelay * 2, _WS_MAX_DELAY);
 }
 
 async function bootstrap() {

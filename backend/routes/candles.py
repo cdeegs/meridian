@@ -8,26 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.services.candle_history import coverage_looks_complete, merge_candles
+from backend.utils.symbols import TIMEFRAME_SPECS as _TIMEFRAME_SPECS, is_equity_symbol as _is_equity_symbol
 
 router = APIRouter(prefix="/api", tags=["candles"])
 logger = logging.getLogger(__name__)
 _stock_market_data = None
 _crypto_market_data = None
-
-_TIMEFRAME_SPECS = {
-    "1m": {"bucket_width": timedelta(minutes=1), "window": timedelta(hours=24)},
-    "5m": {"bucket_width": timedelta(minutes=5), "window": timedelta(hours=24)},
-    "15m": {"bucket_width": timedelta(minutes=15), "window": timedelta(days=3)},
-    "30m": {"bucket_width": timedelta(minutes=30), "window": timedelta(days=5)},
-    "1h": {"bucket_width": timedelta(hours=1), "window": timedelta(days=14)},
-    "2h": {"bucket_width": timedelta(hours=2), "window": timedelta(days=21)},
-    "4h": {"bucket_width": timedelta(hours=4), "window": timedelta(days=60)},
-    "6h": {"bucket_width": timedelta(hours=6), "window": timedelta(days=90)},
-    "12h": {"bucket_width": timedelta(hours=12), "window": timedelta(days=180)},
-    "1d": {"bucket_width": timedelta(days=1), "window": timedelta(days=365)},
-    "2d": {"bucket_width": timedelta(days=2), "window": timedelta(days=730)},
-    "1w": {"bucket_width": timedelta(days=7), "window": timedelta(days=1825)},
-}
 
 
 def set_stock_market_data_client(client) -> None:
@@ -46,10 +32,6 @@ def set_crypto_market_data_client(client) -> None:
 
 def set_coinbase_market_data_client(client) -> None:
     set_crypto_market_data_client(client)
-
-
-def _is_equity_symbol(symbol: str) -> bool:
-    return "-" not in symbol and "/" not in symbol
 
 
 @router.get("/candles/{symbol}")
@@ -129,12 +111,13 @@ async def get_candles(
                 provider_candles = []
 
         merged_candles = merge_candles(db_candles, provider_candles)
-        if merged_candles:
-            return {
-                "symbol": normalized_symbol,
-                "timeframe": timeframe,
-                "candles": merged_candles[-limit:],
-            }
+        if not merged_candles:
+            raise HTTPException(status_code=404, detail=f"No candle data found for {normalized_symbol} ({timeframe})")
+        return {
+            "symbol": normalized_symbol,
+            "timeframe": timeframe,
+            "candles": merged_candles[-limit:],
+        }
 
     if not db_candles:
         raise HTTPException(status_code=404, detail=f"No candle data for {normalized_symbol} in requested range")

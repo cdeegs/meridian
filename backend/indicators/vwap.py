@@ -1,9 +1,20 @@
-from datetime import datetime, timezone, time as dt_time
+from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
+
 from backend.indicators.base import BaseIndicator
 
-# NYSE open = 09:30 ET = 14:30 UTC (ignores daylight saving for simplicity)
-_NYSE_OPEN_UTC = dt_time(14, 30, 0)
+_ET = ZoneInfo("America/New_York")
+
+
+def _is_new_session(prev_time: datetime, curr_time: datetime) -> bool:
+    prev_et = prev_time.astimezone(_ET)
+    curr_et = curr_time.astimezone(_ET)
+    prev_date = prev_et.date()
+    curr_date = curr_et.date()
+    if curr_date > prev_date:
+        return True
+    return False
 
 
 class VWAP(BaseIndicator):
@@ -13,7 +24,7 @@ class VWAP(BaseIndicator):
     The "fair value" benchmark used by institutional traders. Calculated as:
         VWAP = Σ(price × volume) / Σ(volume)
 
-    Resets at NYSE open (14:30 UTC) so each trading session gets its own VWAP.
+    Resets at each new NYSE trading day so each session gets its own VWAP.
     Crypto is 24/7 — for non-equity symbols you'd want a rolling VWAP instead.
 
     A stock trading above VWAP → buyers are in control.
@@ -25,7 +36,7 @@ class VWAP(BaseIndicator):
         self.min_periods = 1
         self._cum_pv: float = 0.0   # cumulative price × volume
         self._cum_vol: float = 0.0  # cumulative volume
-        self._session_date: Optional[datetime] = None
+        self._last_time: Optional[datetime] = None
 
     def update(
         self,
@@ -49,24 +60,15 @@ class VWAP(BaseIndicator):
         return round(self._cum_pv / self._cum_vol, 4)
 
     def _maybe_reset(self, timestamp: datetime) -> None:
-        """Reset at NYSE open (14:30 UTC) each day."""
         if timestamp.tzinfo is None:
             return
 
-        ts_utc = timestamp.astimezone(timezone.utc)
-        session_start = ts_utc.replace(
-            hour=_NYSE_OPEN_UTC.hour,
-            minute=_NYSE_OPEN_UTC.minute,
-            second=0,
-            microsecond=0,
-        )
-
-        if self._session_date is None:
-            self._session_date = session_start
+        event_time = timestamp.astimezone(timezone.utc)
+        if self._last_time is None:
+            self._last_time = event_time
             return
 
-        if ts_utc >= session_start > self._session_date:
-            # New session — reset accumulators
+        if _is_new_session(self._last_time, event_time):
             self._cum_pv = 0.0
             self._cum_vol = 0.0
-            self._session_date = session_start
+        self._last_time = event_time

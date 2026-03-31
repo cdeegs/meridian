@@ -36,8 +36,10 @@ class ConnectionManager:
         await ws.accept()
 
     def disconnect(self, ws: WebSocket) -> None:
-        for symbol_set in self._subs.values():
-            symbol_set.discard(ws)
+        for symbol in list(self._subs):
+            self._subs[symbol].discard(ws)
+            if not self._subs[symbol]:
+                del self._subs[symbol]
 
     def subscribe(self, ws: WebSocket, symbols: List[str]) -> None:
         for symbol in symbols:
